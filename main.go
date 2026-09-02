@@ -4,7 +4,7 @@
 //
 //	cysu <resource> <action> [flags]
 //
-// Resources: projects, findings, accounts, endpoints.
+// Resources: projects, findings, accounts, endpoints, key.
 package main
 
 import (
@@ -21,8 +21,22 @@ func main() {
 	resource := os.Args[1]
 	args := os.Args[2:]
 
-	var err error
+	// First run: prompt for a passphrase and create the encryption key.
 	switch resource {
+	case "help", "-h", "--help", "key":
+	default:
+		if err := ensureKey(); err != nil {
+			fmt.Fprintf(os.Stderr, "cysu: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	var err error
+
+	switch resource {
+
+	case "key":
+		err = runKey(args)
 	case "projects":
 		err = runProjects(args)
 	case "findings":
@@ -46,8 +60,7 @@ func main() {
 	}
 }
 
-func usage() {
-	fmt.Fprint(os.Stderr, `cysu - CyberSupplies CLI
+const DESCRIPTION = `cysu - CyberSupplies CLI
 
 Usage:
   cysu <resource> <action> [flags]
@@ -74,7 +87,17 @@ Endpoints:
   cysu endpoints list   --project <id>
   cysu endpoints search --project <id> --query <query>
 
+Key (encryption):
+  cysu key init    [--force]   Create the encryption key from a passphrase
+  cysu key path                Print the key file location
+  cysu key verify              Check a passphrase against the stored key
+
 Environment:
-  CYSU_API_URL   Override the backend base URL (default `+baseURL+`)
-`)
+  CYSU_API_URL      Override the backend base URL (default `+baseURL+`)
+  CYSU_KEY_FILE     Override the key file location (default <user-config-dir>/cysu/master.key)
+  CYSU_PASSPHRASE   Supply the passphrase non-interactively (setup/verify)
+`
+
+func usage() {
+	fmt.Fprint(os.Stderr, DESCRIPTION)
 }
