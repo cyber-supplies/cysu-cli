@@ -1,10 +1,7 @@
-// Command cysu is a CLI for the CyberSupplies backend.
+// CLI for the CyberSupplies backend.
 //
-// Usage:
-//
-//	cysu <resource> <action> [flags]
-//
-// Resources: projects, findings, accounts, endpoints.
+// Usage: cysu <resource> <action> [flags]
+
 package main
 
 import (
@@ -22,59 +19,67 @@ func main() {
 	args := os.Args[2:]
 
 	var err error
+
 	switch resource {
+
 	case "projects":
 		err = runProjects(args)
+
 	case "findings":
 		err = runFindings(args)
+
 	case "accounts":
 		err = runAccounts(args)
+
 	case "endpoints":
 		err = runEndpoints(args)
+
 	case "help", "-h", "--help":
 		usage()
 		return
+
 	default:
-		fmt.Fprintf(os.Stderr, "cysu: unknown resource %q\n\n", resource)
+		fmt.Fprintf(os.Stderr, "Unknown resource %q\n\n", resource)
 		usage()
 		os.Exit(2)
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cysu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `cysu - CyberSupplies CLI
+	helpString := `
+		Usage:
+		cysu <resource> <action> [flags]
 
-Usage:
-  cysu <resource> <action> [flags]
+		Projects:
+		cysu projects list
+		cysu projects get     --project <id>
+		cysu projects create  --name <name>
+		cysu projects delete  --project <id>
 
-Projects:
-  cysu projects list
-  cysu projects get     --project <id>
-  cysu projects create  --name <name>
-  cysu projects delete  --project <id>
+		Findings:
+		cysu findings list    --project <id>
+		cysu findings get     --project <id> --finding <id>
+		cysu findings create  --project <id> --title <title> --desc <description> [--severity <sev>]
+		cysu findings delete  --project <id> --finding <id>
 
-Findings:
-  cysu findings list    --project <id>
-  cysu findings get     --project <id> --finding <id>
-  cysu findings create  --project <id> --title <title> --desc <description> [--severity <sev>]
-  cysu findings delete  --project <id> --finding <id>
+		Accounts:
+		cysu accounts list    --project <id>
+		cysu accounts get     --project <id> --account <id>
+		cysu accounts create  --project <id> --username <user> --password <pass> [--location <url>]
+		cysu accounts delete  --project <id> --account <id>
 
-Accounts:
-  cysu accounts list    --project <id>
-  cysu accounts get     --project <id> --account <id>
-  cysu accounts create  --project <id> --username <user> --password <pass> [--location <url>]
-  cysu accounts delete  --project <id> --account <id>
+		Endpoints:
+		cysu endpoints list   --project <id>
+		cysu endpoints search --project <id> --query <query>
 
-Endpoints:
-  cysu endpoints list   --project <id>
-  cysu endpoints search --project <id> --query <query>
+		Other:
+		cysu help
+	`
 
-Environment:
-  CYSU_API_URL   Override the backend base URL (default `+baseURL+`)
-`)
+	fmt.Fprint(os.Stderr, helpString)
 }
