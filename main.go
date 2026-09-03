@@ -1,4 +1,4 @@
-// Command cysu is a CLI for the CyberSupplies backend.
+// CLI for the CyberSupplies backend.
 //
 // Usage:
 //
@@ -39,23 +39,28 @@ func main() {
 		err = runKey(args)
 	case "projects":
 		err = runProjects(args)
+
 	case "findings":
 		err = runFindings(args)
+
 	case "accounts":
 		err = runAccounts(args)
+
 	case "endpoints":
 		err = runEndpoints(args)
+
 	case "help", "-h", "--help":
 		usage()
 		return
+
 	default:
-		fmt.Fprintf(os.Stderr, "cysu: unknown resource %q\n\n", resource)
+		fmt.Fprintf(os.Stderr, "Unknown resource %q\n\n", resource)
 		usage()
 		os.Exit(2)
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cysu: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
