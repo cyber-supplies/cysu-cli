@@ -1,88 +1,55 @@
 package main
 
-import (
-	"flag"
-	"fmt"
-)
+var accountFlag = flagSpec{name: "account", placeholder: "id", usage: "account id", required: true}
 
-// Handler for the accounts resource
-func runAccounts(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("accounts: missing action (list|get|create|delete)")
-	}
-
-	action, rest := args[0], args[1:]
-
-	switch action {
-
-	case "list":
-		fs := flag.NewFlagSet("accounts list", flag.ContinueOnError)
-		project := fs.String("project", "", "project id")
-
-		if err := fs.Parse(rest); err != nil {
-			return err
-		}
-
-		if err := requireFlags(map[string]string{"project": *project}); err != nil {
-			return err
-		}
-
-		return request("GET", "/projects/"+esc(*project)+"/accounts", nil)
-
-	case "get":
-		fs := flag.NewFlagSet("accounts get", flag.ContinueOnError)
-		project := fs.String("project", "", "project id")
-		account := fs.String("account", "", "account id")
-
-		if err := fs.Parse(rest); err != nil {
-			return err
-		}
-
-		if err := requireFlags(map[string]string{"project": *project, "account": *account}); err != nil {
-			return err
-		}
-
-		return request("GET", "/projects/"+esc(*project)+"/accounts/"+esc(*account), nil)
-
-	case "create":
-		fs := flag.NewFlagSet("accounts create", flag.ContinueOnError)
-		project := fs.String("project", "", "project id")
-		username := fs.String("username", "", "account username")
-		password := fs.String("password", "", "account password")
-		location := fs.String("location", "", "login location url (optional)")
-
-		if err := fs.Parse(rest); err != nil {
-			return err
-		}
-
-		if err := requireFlags(map[string]string{"project": *project, "username": *username, "password": *password}); err != nil {
-			return err
-		}
-
-		body := map[string]any{"username": *username, "password": *password}
-
-		if *location != "" {
-			body["location"] = *location
-		}
-
-		return request("POST", "/projects/"+esc(*project)+"/accounts", body)
-
-	case "delete":
-		fs := flag.NewFlagSet("accounts delete", flag.ContinueOnError)
-		project := fs.String("project", "", "project id")
-		account := fs.String("account", "", "account id")
-
-		if err := fs.Parse(rest); err != nil {
-			return err
-		}
-
-		if err := requireFlags(map[string]string{"project": *project, "account": *account}); err != nil {
-			return err
-		}
-
-		return request("DELETE", "/projects/"+esc(*project)+"/accounts/"+esc(*account), nil)
-
-	default:
-		return fmt.Errorf("accounts: unknown action %q (list|get|create|delete)", action)
-	}
+var accountsResource = resource{
+	name:  "accounts",
+	title: "Accounts",
+	api:   true,
+	commands: []command{
+		{
+			name:  "list",
+			flags: []flagSpec{projectFlag},
+			run: func(v flagValues) error {
+				return request("GET", apiPath("projects", v["project"], "accounts"), nil)
+			},
+		},
+		{
+			name:  "get",
+			flags: []flagSpec{projectFlag, accountFlag},
+			run: func(v flagValues) error {
+				return request("GET", apiPath("projects", v["project"], "accounts", v["account"]), nil)
+			},
+		},
+		{
+			name: "create",
+			flags: []flagSpec{
+				projectFlag,
+				{name: "username", placeholder: "user", usage: "account username", required: true},
+				{name: "password", placeholder: "pass", usage: "account password", required: true},
+				{name: "location", placeholder: "url", usage: "login location url"},
+			},
+			run: func(v flagValues) error {
+				body := map[string]any{"username": v["username"], "password": v["password"]}
+				if location := v["location"]; location != "" {
+					body["location"] = location
+				}
+				return request("POST", apiPath("projects", v["project"], "accounts"), body)
+			},
+		},
+		{
+			name:  "delete",
+			flags: []flagSpec{projectFlag, accountFlag},
+			run: func(v flagValues) error {
+				return request("DELETE", apiPath("projects", v["project"], "accounts", v["account"]), nil)
+			},
+		},
+		{
+			name:  "get-auth",
+			flags: []flagSpec{projectFlag, accountFlag},
+			run: func(v flagValues) error {
+				return request("GET", apiPath("projects", v["project"], "accounts", v["account"], "auth"), nil)
+			},
+		},
+	},
 }

@@ -9,11 +9,27 @@ The CLI for Cyber Supplies (cysu), the autonomous security research infrastructu
 
 ## Output
 
-The responses from the CLI are always JSON.
+Every response is JSON. Backend responses are printed on stdout and carry a boolean `success` key; when it is false, `message` explains why.
 
-**Important** - The boolean "success" key indicates whether there was an error. The "message" key will then give details about what the error was. It is wise to implement error-safety around these key facts.
+When a command fails, the CLI exits non-zero and prints exactly one JSON line on stderr:
+
+```
+{"success": false, "message": "<what went wrong>", "usage": "<correct invocation, only for argument errors>", "action": "<what to do next>"}
+```
+
+**CRITICAL** - Do what `action` says, and nothing more. It is always one of:
+
+- Fix the arguments and re-run. `usage` shows the correct form; you do not need to run `help` again.
+- Retry once; if it fails again, stop and report the error to the user.
+- Stop and report to the user, or ask them for something. Never guess a token, passphrase or id to get past this.
+
+A backend error (for example a missing project) prints the backend's own `{"success": false, "message": ...}` on stdout, followed by the action line on stderr.
 
 A modal response has been provided alongside each command. Use this to parse the output from the commands.
+
+## Authentication
+
+Every command except `key` needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
 
 ## Projects
 

@@ -14,43 +14,45 @@ go vet ./... 2>&1 && go build -o cysu . 2>&1 && echo "BUILD OK"
 ## Usage
 
 ```
-cysu help
+cysu - CyberSupplies CLI
 
+Usage:
+  cysu <resource> <action> [flags]
 
-cysu findings list --project
+Projects:
+  cysu projects list
+  cysu projects get      [--project <id>]
+  cysu projects create   --name <name> --scope <glob> [--scope <glob>...]
+  cysu projects delete   --project <id>
+  cysu projects select   --project <id>
+  cysu projects current
 
-cysu findings get --project --finding
+Findings:
+  cysu findings list    [--project <id>]
+  cysu findings get     [--project <id>] --finding <id>
+  cysu findings create  [--project <id>] --title <title> --desc <description> [--severity <sev>]
+  cysu findings delete  [--project <id>] --finding <id>
 
-cysu findings create --project --title --desc
+Accounts:
+  cysu accounts list      [--project <id>]
+  cysu accounts get       [--project <id>] --account <id>
+  cysu accounts create    [--project <id>] --username <user> --password <pass> [--location <url>]
+  cysu accounts delete    [--project <id>] --account <id>
+  cysu accounts get-auth  [--project <id>] --account <id>
 
-cysu findings delete --project --finding
+Endpoints:
+  cysu endpoints list    [--project <id>]
+  cysu endpoints search  [--project <id>] --query <query>
 
+Storage:
+  cysu storage list      [--project <id>] [--dir <dir>]
+  cysu storage upload    [--project <id>] --file <local> --path <path>
+  cysu storage download  [--project <id>] --path <path> --output <local>
 
-
-cysu projects list
-
-cysu projects get --project
-
-cysu projects create --name
-
-cysu projects delete --project
-
-
-
-cysu accounts list --project
-
-cysu accounts get --project --account
-
-cysu accounts create --project --username --password
-
-cysu accounts delete --project --account
-
-cysu accounts get-auth --project --acount
-
-
-‌cysu endpoints list --project
-
-cysu endpoints search --project --query
+Key:
+  cysu key init    [--force]
+  cysu key path
+  cysu key verify
 ```
 
 ## Authentication
