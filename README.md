@@ -1,6 +1,6 @@
 # Cyber Supplies CLI
 
-This is the CLI the agent and user will use for interacting with our backend.
+This is the CLI the agent and user use for interacting with our backend.
 
 ## Installation
 
@@ -48,6 +48,7 @@ Storage:
   cysu storage list      [--project <id>] [--dir <dir>]
   cysu storage upload    [--project <id>] --file <local> --path <path>
   cysu storage download  [--project <id>] --path <path> --output <local>
+  cysu storage read      [--project <id>] --path <path>
 
 Key:
   cysu key init    [--force]

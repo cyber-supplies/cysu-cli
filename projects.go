@@ -81,17 +81,9 @@ func runSelectProject(id string) error {
 		return err
 	}
 
-	path, err := selectProject(id)
-
-	if err != nil {
-		return err
-	}
-
 	return printJSON(struct {
-		Success bool   `json:"success"`
 		Project string `json:"project"`
-		Config  string `json:"config"`
-	}{true, id, path})
+	}{id})
 }
 
 // runCurrentProject prints the selected project. Nothing selected is not an
@@ -106,7 +98,6 @@ func runCurrentProject() error {
 		project = &id
 	}
 	return printJSON(struct {
-		Success bool    `json:"success"`
 		Project *string `json:"project"`
-	}{true, project})
+	}{project})
 }
