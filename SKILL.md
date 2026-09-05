@@ -9,21 +9,13 @@ The CLI for Cyber Supplies (cysu), the autonomous security research infrastructu
 
 ## Output
 
-Every response is JSON. Backend responses are printed on stdout and carry a boolean `success` key; when it is false, `message` explains why.
+Every response is JSON. Backend responses are printed to stdout.
 
-When a command fails, the CLI exits non-zero and prints exactly one JSON line on stderr:
+**CRITICAL** - When a error occurs, either CLI or Server, the "error" key will be present in the JSON. It may also include a recommended action path to take. It is highly recommended to use the presence of a key as a safety check before passing the result of the tool to other commands.
 
 ```
-{"success": false, "message": "<what went wrong>", "usage": "<correct invocation, only for argument errors>", "action": "<what to do next>"}
+{"error": "Project Not Found"}
 ```
-
-**CRITICAL** - Do what `action` says, and nothing more. It is always one of:
-
-- Fix the arguments and re-run. `usage` shows the correct form; you do not need to run `help` again.
-- Retry once; if it fails again, stop and report the error to the user.
-- Stop and report to the user, or ask them for something. Never guess a token, passphrase or id to get past this.
-
-A backend error (for example a missing project) prints the backend's own `{"success": false, "message": ...}` on stdout, followed by the action line on stderr.
 
 A modal response has been provided alongside each command. Use this to parse the output from the commands.
 
@@ -41,7 +33,14 @@ cysu projects list
 {
   "success": true,
   "projects": [
-    ...
+    {
+      "id": "example-app-a68fn",
+      "name": "Example App",
+      "scope": [
+        "*example*",
+        "*test*"
+      ]
+    }
   ]
 }
 ```
@@ -50,6 +49,10 @@ cysu projects list
 
 ```
 cysu projects select --project <projectID>
+
+{
+  "project": "<projectID>"
+}
 ```
 
 Alternatively, a project can also be specified with the CLI flag `--project <projectID>` on each request. If a flag is specified, it will take priority over the currently selected project.
@@ -61,13 +64,25 @@ Alternatively, a project can also be specified with the CLI flag `--project <pro
 The user may provision you accounts for use inside the projects. To see available accounts:
 
 ```
-cysu accounts list
+[
+  {
+    "id": "acc_01m1r85wgef0x88sa4p8qrkjtb",
+    "username": "pentester1",
+    "location": "https://example.com/login"
+  }
+]
 ```
 
 To retrieve the authentication for a specific account:
 
 ```
 cysu accounts get-auth --account <accountID>
+
+{
+  "id": "<accountID>",
+  "username": "pentester1",
+  "cookies": "session=8f14e45fceea167a; token=5d41402abc4b2a76;"
+}
 ```
 
 **Important** - This returns live credentials. It is highly recommended to parse the JSON and store the credentials inside a file, rather than reading it into context.
@@ -80,12 +95,80 @@ To view the collected endpoints for a target:
 
 ```
 ‌cysu endpoints list
+
+{
+  "endpoints": [
+    {
+      "url": "https://www.example.com/search",
+      "parameters": [
+        {
+          "name": "q",
+          "format": "STRING",
+          "optional": false
+        },
+        {
+          "name": "limit",
+          "format": "INTEGER",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "url": "https://www.example.com/login",
+      "method: "POST",
+      "parameters": [
+        {
+          "name": "username",
+          "format": "STRING",
+          "optional": false
+        },
+        {
+          "name": "password",
+          "format": "STRING",
+          "optional": false
+        },
+        {
+          "name": "remember",
+          "format": "BOOLEAN",
+          "optional": true
+        }
+      ]
+    }
+  ]
+}
+
 ```
 
 To search for endpoints using regex:
 
 ```
-cysu endpoints search --query
+cysu endpoints search --query <regex>
+
+{
+  "endpoints": [
+    {
+      "url": "https://www.example.com/login",
+      "method": "POST"
+      "parameters": [
+        {
+          "name": "username",
+          "format": "STRING",
+          "optional": false
+        },
+        {
+          "name": "password",
+          "format": "STRING",
+          "optional": false
+        },
+        {
+          "name": "remember",
+          "format": "BOOLEAN",
+          "optional": true
+        }
+      ]w
+    }
+  ]
+}
 ```
 
 ## Storage

@@ -18,7 +18,7 @@ import (
 )
 
 // defaultBaseURL is the backend the CLI talks to unless CYSU_API_URL is set.
-const defaultBaseURL = "https://blueprint-backend-670100724771.europe-west1.run.app/"
+const defaultBaseURL = "https://cysu-backend-670100724771.europe-west1.run.app"
 
 // apiRoot is the common prefix of every backend route.
 const apiRoot = "/api"

@@ -11,10 +11,12 @@ package main
 //	          then PUT the contents to uploadUrl
 //	download  GET  /projects/{id}/storage/files/{fileId} -> {id, path, downloadUrl}
 //	          then GET downloadUrl
+//	read      as download, but the contents are printed (base64) rather
+//	          than written to a local file
 //
 // On the command line files are addressed by their storage path, which is
-// what the caller knows; download resolves it to a file id via the listing.
-// The presigned URLs are used once and never printed.
+// what the caller knows; download and read resolve it to a file id via the
+// listing. The presigned URLs are used once and never printed.
 //
 // Contents are compressed with zstd and then encrypted with the master key
 // before upload (see encryption.go), and decrypted and decompressed after
@@ -24,6 +26,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -70,6 +73,16 @@ var storageResource = resource{
 			},
 			run: func(v flagValues) error {
 				return downloadFile(v["project"], v["path"], v["output"])
+			},
+		},
+		{
+			name: "read",
+			flags: []flagSpec{
+				projectFlag,
+				{name: "path", placeholder: "path", usage: "path of the file in storage", required: true},
+			},
+			run: func(v flagValues) error {
+				return readFile(v["project"], v["path"])
 			},
 		},
 	},
@@ -160,20 +173,28 @@ func uploadFile(project, local, remote string) error {
 	}{true, ticket.ID, ticket.Path, len(plaintext)})
 }
 
-// downloadFile finds the stored file at remote, fetches its presigned URL,
-// downloads, decrypts and decompresses the contents and writes them to output.
-// The file is written next to its final location and renamed into place, so
-// a failed transfer never leaves a truncated file behind. A file that was
-// stored unencrypted (by other means) is written as it is, and reported as
-// such.
-func downloadFile(project, remote, output string) error {
+// A fetchedFile is the outcome of fetchFile: the listing entry the path
+// resolved to, the file's plaintext contents and whether they were stored
+// encrypted.
+type fetchedFile struct {
+	storedFile
+	contents  []byte
+	encrypted bool
+}
+
+// fetchFile finds the stored file at remote, fetches its presigned URL,
+// downloads the contents into memory and decrypts and decompresses them. A
+// file that was stored unencrypted (by other means) is returned as it is,
+// and reported as such. Shared by download and read, which differ only in
+// where the contents end up.
+func fetchFile(project, remote string) (fetchedFile, error) {
 	raw, err := send("GET", apiPath("projects", project, "storage", "files"), nil)
 	if err != nil {
-		return err
+		return fetchedFile{}, err
 	}
 	files, err := decodeFileList(raw)
 	if err != nil {
-		return err
+		return fetchedFile{}, err
 	}
 	var file *storedFile
 	for i := range files {
@@ -183,38 +204,49 @@ func downloadFile(project, remote, output string) error {
 		}
 	}
 	if file == nil {
-		return failf("no stored file at path %q; check `cysu storage list`", remote)
+		return fetchedFile{}, failf("no stored file at path %q; check `cysu storage list`", remote)
 	}
 
 	raw, err = send("GET", apiPath("projects", project, "storage", "files", file.ID), nil)
 	if err != nil {
-		return err
+		return fetchedFile{}, err
 	}
 	ticket, err := decodeTicket(raw, "downloadUrl")
 	if err != nil {
-		return err
+		return fetchedFile{}, err
 	}
 
 	resp, err := transfer("GET", ticket.URL, nil, 0, "")
 	if err != nil {
-		return err
+		return fetchedFile{}, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return failf("downloading %s: %v", remote, err)
+		return fetchedFile{}, failf("downloading %s: %v", remote, err)
 	}
 	plaintext, encrypted, err := decryptBytesIfEncrypted(data)
 	if err != nil {
-		return fmt.Errorf("stored file %s: %w", remote, err)
+		return fetchedFile{}, fmt.Errorf("stored file %s: %w", remote, err)
 	}
 	if encrypted {
 		if plaintext, err = decompress(plaintext); err != nil {
-			return fmt.Errorf("stored file %s: decompressing: %w", remote, err)
+			return fetchedFile{}, fmt.Errorf("stored file %s: decompressing: %w", remote, err)
 		}
 	}
+	return fetchedFile{storedFile: *file, contents: plaintext, encrypted: encrypted}, nil
+}
 
-	size, err := writeAtomically(output, bytes.NewReader(plaintext))
+// downloadFile fetches the stored file at remote and writes its contents to
+// output. The file is written next to its final location and renamed into
+// place, so a failed transfer never leaves a truncated file behind.
+func downloadFile(project, remote, output string) error {
+	file, err := fetchFile(project, remote)
+	if err != nil {
+		return err
+	}
+
+	size, err := writeAtomically(output, bytes.NewReader(file.contents))
 	if err != nil {
 		return err
 	}
@@ -229,7 +261,21 @@ func downloadFile(project, remote, output string) error {
 		Output    string `json:"output"`
 		Size      int64  `json:"size"`
 		Encrypted bool   `json:"encrypted"`
-	}{true, file.ID, file.Path, abs, size, encrypted})
+	}{true, file.ID, file.Path, abs, size, file.encrypted})
+}
+
+// readFile fetches the stored file at remote and prints its contents as
+// {"data": "<base64>"}, so a caller can use a file without writing it to
+// disk. The contents are base64-encoded because they may be binary, which
+// a JSON string cannot carry as it is.
+func readFile(project, remote string) error {
+	file, err := fetchFile(project, remote)
+	if err != nil {
+		return err
+	}
+	return printJSON(struct {
+		Data string `json:"data"`
+	}{base64.StdEncoding.EncodeToString(file.contents)})
 }
 
 // writeAtomically streams r into a temporary file beside path and renames it

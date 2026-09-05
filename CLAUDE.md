@@ -28,3 +28,5 @@ Certain fields from the requests and responses must be encrypted/decrypted befor
 - Use the config folder for storing data related to the tool. Currently, this includes the encryption key, and currently selected project.
 
 - The binary is intended for multiple operating systems. Ensure everything is cross-platform compatible.
+
+- The files 'README.md' and 'SKILL.md', are only to be edited by the user.
