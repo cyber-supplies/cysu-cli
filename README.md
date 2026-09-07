@@ -5,14 +5,14 @@ This is the CLI the agent and user use for interacting with our backend.
 ## Installing
 
 ```
+git clone https://github.com/jakdevreal/cysu-cli.git
+cd cysu-cli
 cat install.sh | sh
 ```
 
 ## Build From Source
 
 ```
-git clone https://github.com/jakdevreal/cysu-cli.git
-cd cysu-cli
 go vet ./... 2>&1 && go build -o cysu ./cmd/cysu 2>&1 && echo "BUILD OK"
 ./cysu help
 ```
