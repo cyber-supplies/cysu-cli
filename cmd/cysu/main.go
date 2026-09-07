@@ -83,7 +83,7 @@ func exitOnError(err error) {
 func printUsage() {
 	w := os.Stderr
 
-	fmt.Fprint(w, "cysu - CyberSupplies CLI\nUsage:\n  cysu <resource> <action> [flags]\n")
+	fmt.Fprint(w, "cysu - CyberSupplies CLI\n\nUsage:\n  cysu <resource> <action> [flags]\n\n")
 
 	for _, r := range resources {
 		r.printHelp(w)

@@ -2,13 +2,37 @@
 
 This is the CLI the agent and user use for interacting with our backend.
 
-## Installation
+## Installing
+
+```
+cat install.sh | sh
+```
+
+## Build From Source
 
 ```
 git clone https://github.com/jakdevreal/cysu-cli.git
 cd cysu-cli
-go vet ./... 2>&1 && go build -o cysu . 2>&1 && echo "BUILD OK"
+go vet ./... 2>&1 && go build -o cysu ./cmd/cysu 2>&1 && echo "BUILD OK"
 ./cysu help
+```
+
+## Releasing
+
+To set authentication using github CLI:
+
+```
+npm config set @cyber-supplies:registry https://npm.pkg.github.com
+npm config set //npm.pkg.github.com/:_authToken "$(gh auth token)"
+```
+
+To create a release:
+
+```
+git checkout main && git pull
+git tag -a v0.1.{VERSION_NUMBER} -m "v0.1.{VERSION_NUMBER}"
+git push origin v0.1.{VERSION_NUMBER}
+gh run watch --exit-status
 ```
 
 ## Usage
@@ -69,3 +93,5 @@ It is also possible to pass the token directly via a CLI flag:
 ```
 cysu projects list --token sk-xxxx
 ```
+
+The tag is the version. The workflow builds and publishes `@cyber-supplies/cysu` to GitHub Packages.

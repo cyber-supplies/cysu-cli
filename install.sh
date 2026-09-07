@@ -9,17 +9,23 @@
 #   curl -fsSL https://raw.githubusercontent.com/cyber-supplies/cysu-cli/main/install.sh | sh
 #   sh install.sh
 #
-# Node.js (npm and npx) is the only requirement. When run from a terminal the
-# skill installer asks which agents to install into; when piped through sh it
-# installs into every agent it detects.
+# Node.js (npm and npx) and git are required. The skill installer asks which
+# agents to install into, reading the answer from the terminal directly so
+# the question is asked even when the script is piped through sh. Only a run
+# with no terminal at all (CI) installs into every agent it detects.
+#
+# The script clones the repository itself and hands the installer the local
+# checkout. Letting the installer clone while it holds the terminal makes it
+# hang at "Cloning repository", so the two are kept apart.
 #
 # Environment overrides:
 #
 #   CYSU_NPM_PACKAGE   npm package holding the binary   (default: @cyber-supplies/cysu)
 #   CYSU_VERSION       npm version or dist-tag           (default: latest)
-#   CYSU_SKILL_SOURCE  where `skills` reads SKILL.md     (default: cyber-supplies/cysu-cli)
+#   CYSU_SKILL_SOURCE  GitHub owner/repo, git URL or local directory holding
+#                      the skill                        (default: cyber-supplies/cysu-cli)
 #   CYSU_SKILL_AGENTS  space-separated agent names, e.g. "claude-code codex"
-#                      (default: ask, or every detected agent when not a terminal)
+#                      (default: ask; every detected agent when there is no terminal)
 
 set -eu
 
@@ -67,22 +73,47 @@ check_path() {
 		"    ${prefix:-<npm prefix -g>}       (Windows)" >&2
 }
 
+# skill_checkout resolves CYSU_SKILL_SOURCE to a local directory in
+# CYSU_SKILL_DIR. A directory is used as it is; a git URL or GitHub
+# owner/repo is cloned shallowly into a temporary directory, recorded in
+# CYSU_TMP so cleanup removes it on exit. Git is told never to prompt, so a
+# private repository without credentials fails at once instead of waiting
+# for input the user cannot see.
+skill_checkout() {
+	if [ -d "$CYSU_SKILL_SOURCE" ]; then
+		CYSU_SKILL_DIR="$CYSU_SKILL_SOURCE"
+		return
+	fi
+	case "$CYSU_SKILL_SOURCE" in
+	*://* | git@*) url="$CYSU_SKILL_SOURCE" ;;
+	*) url="https://github.com/$CYSU_SKILL_SOURCE.git" ;;
+	esac
+	CYSU_TMP="$(mktemp -d)" || fail "could not create a temporary directory"
+	GIT_TERMINAL_PROMPT=0 git clone -q --depth 1 "$url" "$CYSU_TMP/src" ||
+		fail "could not clone $url; check that git can reach the repository (a private repository needs credentials, e.g. \`gh auth setup-git\`)"
+	CYSU_SKILL_DIR="$CYSU_TMP/src"
+}
+
 # install_skill installs SKILL.md into the user's agents with the `skills` CLI.
-# Agents are taken from CYSU_SKILL_AGENTS when set. Otherwise a terminal gets
-# the interactive picker, and a non-interactive run installs into every
-# detected agent.
+# Agents come from CYSU_SKILL_AGENTS when set. Otherwise the installer's own
+# picker asks which agents to use. It is given the terminal as stdin because
+# under `curl | sh` stdin is the script itself, which would leave nothing to
+# read the answer from. When no terminal can be opened the run is headless
+# and every detected agent is used.
 install_skill() {
 	info "Installing the cysu skill from $CYSU_SKILL_SOURCE"
-	set -- add "$CYSU_SKILL_SOURCE" -g
+	skill_checkout
+	set -- add "$CYSU_SKILL_DIR" -g
 	if [ -n "$CYSU_SKILL_AGENTS" ]; then
 		for agent in $CYSU_SKILL_AGENTS; do
 			set -- "$@" -a "$agent"
 		done
-		set -- "$@" -y
-	elif [ ! -t 0 ]; then
-		set -- "$@" -y
+		npx -y skills "$@" -y || fail "skill installation failed"
+	elif ( : </dev/tty ) 2>/dev/null; then
+		npx -y skills "$@" </dev/tty || fail "skill installation failed"
+	else
+		npx -y skills "$@" -y || fail "skill installation failed"
 	fi
-	npx -y skills "$@" || fail "skill installation failed"
 }
 
 # next_steps tells the user what the CLI still needs before an agent can use it.
@@ -95,9 +126,17 @@ next_steps() {
 		"  3. cysu projects list   (checks the token works)" >&2
 }
 
+# cleanup removes the temporary checkout, if one was made.
+cleanup() {
+	[ -n "${CYSU_TMP:-}" ] && rm -rf "$CYSU_TMP"
+}
+
 main() {
 	need_cmd npm
 	need_cmd npx
+	need_cmd git
+	CYSU_TMP=""
+	trap cleanup EXIT
 	install_binary
 	check_path
 	install_skill
