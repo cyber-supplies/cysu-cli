@@ -6,7 +6,7 @@
 #
 # Usage:
 #
-#   curl -fsSL https://raw.githubusercontent.com/jakdevreal/cysu-cli/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/cyber-supplies/cysu-cli/main/install.sh | sh
 #   sh install.sh
 #
 # Node.js (npm and npx) is the only requirement. When run from a terminal the
@@ -15,17 +15,17 @@
 #
 # Environment overrides:
 #
-#   CYSU_NPM_PACKAGE   npm package holding the binary   (default: @cybersupplies/cysu)
+#   CYSU_NPM_PACKAGE   npm package holding the binary   (default: @cyber-supplies/cysu)
 #   CYSU_VERSION       npm version or dist-tag           (default: latest)
-#   CYSU_SKILL_SOURCE  where `skills` reads SKILL.md     (default: jakdevreal/cysu-cli)
+#   CYSU_SKILL_SOURCE  where `skills` reads SKILL.md     (default: cyber-supplies/cysu-cli)
 #   CYSU_SKILL_AGENTS  space-separated agent names, e.g. "claude-code codex"
 #                      (default: ask, or every detected agent when not a terminal)
 
 set -eu
 
-CYSU_NPM_PACKAGE="${CYSU_NPM_PACKAGE:-@cybersupplies/cysu}"
+CYSU_NPM_PACKAGE="${CYSU_NPM_PACKAGE:-@cyber-supplies/cysu}"
 CYSU_VERSION="${CYSU_VERSION:-latest}"
-CYSU_SKILL_SOURCE="${CYSU_SKILL_SOURCE:-jakdevreal/cysu-cli}"
+CYSU_SKILL_SOURCE="${CYSU_SKILL_SOURCE:-cyber-supplies/cysu-cli}"
 CYSU_SKILL_AGENTS="${CYSU_SKILL_AGENTS:-}"
 
 # info prints a progress line.
