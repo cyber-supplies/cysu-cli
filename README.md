@@ -5,7 +5,7 @@ This is the CLI the agent and user use for interacting with our backend.
 ## Installing
 
 ```
-git clone https://github.com/jakdevreal/cysu-cli.git
+git clone https://github.com/cyber-supplies/cysu-cli.git
 cd cysu-cli
 cat install.sh | sh
 ```
