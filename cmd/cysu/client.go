@@ -93,9 +93,11 @@ func request(method, path string, body any) error {
 // status becomes a cliError that echoes the backend's own error body (see
 // backendError).
 func send(method, path string, body any) ([]byte, error) {
+	var encoded []byte
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
+		var err error
+		encoded, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("encoding request body: %w", err)
 		}
@@ -113,17 +115,27 @@ func send(method, path string, body any) ([]byte, error) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	n := traceRequest(method, endpoint, req.Header, encoded)
+	start := time.Now()
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, failf("%s %s: %v", method, endpoint, transportError(err))
+		cause := transportError(err)
+		traceFailure(n, time.Since(start), cause)
+		return nil, failf("%s %s: %v", method, endpoint, cause)
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
+		traceFailure(n, time.Since(start), err)
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 	raw = bytes.TrimSpace(raw)
+
+	// Traced before the status is judged: the reply that failed is the one
+	// worth seeing.
+	traceResponse(n, resp.StatusCode, time.Since(start), raw)
 
 	if resp.StatusCode >= 400 {
 		return nil, backendError(resp.StatusCode, raw)
@@ -169,6 +181,7 @@ func printResponse(raw []byte) {
 func printJSON(v any) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false) // keep <id> placeholders readable, as errors.go does
 	return enc.Encode(v)
 }
 
@@ -205,13 +218,19 @@ func transfer(method, rawURL string, body io.Reader, size int64, contentType str
 		req.Header.Set("Content-Type", contentType)
 	}
 
+	n := traceTransfer(method, rawURL, size, contentType)
+	start := time.Now()
+
 	resp, err := transferClient.Do(req)
 	if err != nil {
-		return nil, failf("%s %s: %v", method, redactURL(rawURL), transportError(err))
+		cause := transportError(err)
+		traceFailure(n, time.Since(start), cause)
+		return nil, failf("%s %s: %v", method, redactURL(rawURL), cause)
 	}
 	if resp.StatusCode >= 400 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
+		traceResponse(n, resp.StatusCode, time.Since(start), raw)
 		detail := errorMessage(raw)
 		if detail == "" {
 			detail = summarize(raw)
@@ -219,6 +238,7 @@ func transfer(method, rawURL string, body io.Reader, size int64, contentType str
 		return nil, failf("%s %s: HTTP %d %s: %s", method, redactURL(rawURL),
 			resp.StatusCode, http.StatusText(resp.StatusCode), detail)
 	}
+	traceTransferResponse(n, resp.StatusCode, time.Since(start), resp.ContentLength)
 	return resp, nil
 }
 

@@ -21,7 +21,7 @@ A modal response has been provided alongside each command. Use this to parse the
 
 ## Authentication
 
-Every command except `key` needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
+Every command except `key` and `debug` needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
 
 ## Projects
 
@@ -64,6 +64,8 @@ Alternatively, a project can also be specified with the CLI flag `--project <pro
 The user may provision you accounts for use inside the projects. To see available accounts:
 
 ```
+cysu accounts list
+
 [
   {
     "id": "acc_01m1r85wgef0x88sa4p8qrkjtb",
@@ -94,13 +96,13 @@ cysu accounts get-auth --account <accountID>
 To view the collected endpoints for a target:
 
 ```
-‌cysu endpoints list
+cysu endpoints list
 
 {
   "endpoints": [
     {
       "url": "https://www.example.com/search",
-       "method: "POST"
+      "method": "POST",
       "parameters": [
         {
           "name": "q",
@@ -116,7 +118,7 @@ To view the collected endpoints for a target:
     },
     {
       "url": "https://www.example.com/login",
-      "method: "POST",
+      "method": "POST",
       "parameters": [
         {
           "name": "username",
@@ -137,7 +139,6 @@ To view the collected endpoints for a target:
     }
   ]
 }
-
 ```
 
 To search for endpoints using regex:
@@ -149,7 +150,7 @@ cysu endpoints search --query <regex>
   "endpoints": [
     {
       "url": "https://www.example.com/login",
-      "method": "POST"
+      "method": "POST",
       "parameters": [
         {
           "name": "username",
@@ -166,7 +167,7 @@ cysu endpoints search --query <regex>
           "format": "BOOLEAN",
           "optional": true
         }
-      ]w
+      ]
     }
   ]
 }
@@ -179,13 +180,92 @@ cysu endpoints search --query <regex>
 Storage is used for holding files in a persistent location, where it can be accessed across multiple devices/sessions. To list objects in the storage:
 
 ```
-cysu storage list --dir
+cysu storage list --dir <dir>
 ```
 
 To upload and download files from the storage:
 
 ```
-cysu storage upload --file --path
+cysu storage upload --file <localFile> --path <storagePath>
 
-cysu storage download --path --output
+cysu storage download --path <storagePath> --output <localFile>
 ```
+
+To read a stored file without writing it to disk. The contents are base64 encoded, because a stored file may be binary:
+
+```
+cysu storage read --path <storagePath>
+
+{
+  "data": "<base64>"
+}
+```
+
+## Debugging
+
+When a command fails and the error alone does not explain why, re-run it with `--debug`. Every command accepts it, and it traces each backend request on stderr as it happens:
+
+```
+cysu findings list --debug
+
+{"debug":"request","n":1,"method":"GET","url":"https://.../api/projects/nope/findings","headers":{"Accept":"application/json","Authorization":"Bearer ****4321"}}
+{"debug":"response","n":1,"status":404,"duration_ms":88,"bytes":29,"body":{"error":"Project Not Found"}}
+```
+
+**Important** - Tracing is written to stderr only. Stdout stays exactly what it would be without the flag, so it is always safe to add `--debug` to a command and keep parsing the result the same way.
+
+Every trace record carries a `debug` key and never an `error` key, so tracing does not interfere with the safety check described above. Credentials are redacted before anything is written, so the trace is safe to read into context.
+
+To check the setup itself, use `cysu debug info`. It runs offline and needs neither a token nor an encryption key, so it answers even when every other command is failing:
+
+```
+cysu debug info
+
+{
+  "ok": false,
+  "version": "0.1.7",
+  "platform": "linux/amd64",
+  "api_url": "https://cysu-backend-670100724771.europe-west1.run.app",
+  "token": {
+    "present": false
+  },
+  "key": {
+    "path": "/home/user/.config/cysu/master.key",
+    "exists": false,
+    "ok": false,
+    "detail": "no key file; run `cysu key init`"
+  },
+  "config": {
+    "path": "/home/user/.config/cysu/config.json",
+    "exists": true,
+    "project": "example-app-a68fn"
+  },
+  "problems": [
+    "no API token: set CYSU_TOKEN or pass --token <token>",
+    "encryption key unusable: no key file; run `cysu key init`"
+  ]
+}
+```
+
+`cysu debug check` reports the same and then makes one request to the backend, which separates a backend that cannot be reached from one that refused the token:
+
+```
+cysu debug check
+
+{
+  "ok": false,
+  "backend": {
+    "reachable": true,
+    "authorised": false,
+    "duration_ms": 210,
+    "detail": {
+      "error": "Invalid API token"
+    }
+  },
+  "problems": [
+    "backend refused the token"
+  ]
+}
+```
+
+**CRITICAL** - Finding a problem is still a successful run, so neither command sets the `error` key. Read the `ok` field and the `problems` list instead. If `problems` names a missing or rejected token, stop and ask the user for it rather than retrying.
