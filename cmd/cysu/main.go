@@ -25,9 +25,18 @@ var resources = []resource{
 	endpointsResource,
 	storageResource,
 	keyResource,
+	debugResource,
 }
 
+// version is the release this binary was built from. The release workflow
+// sets it from the tag; a build from source reports "dev".
+var version = "dev"
+
 func main() {
+	// Read before anything is parsed, so that a malformed command line is
+	// traceable too. --debug can still switch tracing on later (see cli.go).
+	setTracing(tracingFromEnv())
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(2)
@@ -83,9 +92,21 @@ func exitOnError(err error) {
 func printUsage() {
 	w := os.Stderr
 
-	fmt.Fprint(w, "cysu - CyberSupplies CLI\n\nUsage:\n  cysu <resource> <action> [flags]\n\n")
+	fmt.Fprintf(w, "cysu %s - CyberSupplies CLI\n\nUsage:\n  cysu <resource> <action> [flags]\n\n", version)
 
 	for _, r := range resources {
 		r.printHelp(w)
 	}
+
+	// The flags every command accepts, listed once here rather than in each
+	// section. They are built from the specs so the two cannot drift apart.
+	fmt.Fprintln(w, "Global flags:")
+
+	rows := make([][]string, 0, 2)
+	for _, f := range []flagSpec{tokenFlag, debugFlag} {
+		rows = append(rows, []string{"  " + f.label(), f.usage})
+	}
+	writeAligned(w, rows)
+
+	fmt.Fprintln(w)
 }

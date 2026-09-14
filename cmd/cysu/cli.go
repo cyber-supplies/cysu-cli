@@ -84,12 +84,13 @@ type resource struct {
 func (r resource) usesAPI(c command) bool { return r.api && !c.local }
 
 // flags returns every flag c accepts within r: its own, plus --token for
-// commands that talk to the backend.
+// commands that talk to the backend, plus --debug for all of them.
 func (r resource) flags(c command) []flagSpec {
-	if !r.usesAPI(c) {
-		return c.flags
+	flags := slices.Clone(c.flags)
+	if r.usesAPI(c) {
+		flags = append(flags, tokenFlag)
 	}
-	return append(slices.Clone(c.flags), tokenFlag)
+	return append(flags, debugFlag)
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +113,13 @@ func (r resource) run(args []string) error {
 	values, err := cmd.parse(r, rest)
 	if err != nil {
 		return err
+	}
+
+	// --debug adds to what CYSU_DEBUG already asked for (see main). A boolean
+	// flag cannot be told apart from an absent one, so the flag can switch
+	// tracing on but never off.
+	if values.enabled("debug") {
+		setTracing(true)
 	}
 
 	// API commands resolve their token and the master key before they touch
