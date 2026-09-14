@@ -17,12 +17,6 @@ go vet ./... 2>&1 && go build -o cysu ./cmd/cysu 2>&1 && echo "BUILD OK"
 ./cysu help
 ```
 
-## Testing
-
-```
-go test ./... 2>&1
-```
-
 ## Releasing
 
 To set authentication using github CLI:

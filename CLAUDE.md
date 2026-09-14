@@ -19,6 +19,10 @@ The "error" key is the top level object we use to output errors to the agent. We
 
 Certain fields from the requests and responses must be encrypted/decrypted before being processed. We aim to store as little unencrypted user data on our servers as possible. The algorithm for encryption is one way, only the user can encrypt + decrypt the data.
 
+## Unit Tests
+
+You should run unit tests against the features you add into the CLI, checking for edge cases and unexpected output. These unit test files should NEVER be commited into the main code of the CLI. The files in cmd/cysu are reserved strictly for core files, and should not be polluted with anything other than the main code.
+
 ## Behaviour
 
 - At times, the development of the CLI may lag behind that of the backend. This is expected. If the user instructs you to make a change that doesn't align with what the backend returns, then ASSUME that the response is correct, and code it exactly as if it was correct.
