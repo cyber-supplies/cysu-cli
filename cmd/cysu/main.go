@@ -23,6 +23,7 @@ var resources = []resource{
 	findingsResource,
 	accountsResource,
 	endpointsResource,
+	javascriptResource,
 	storageResource,
 	keyResource,
 	debugResource,
