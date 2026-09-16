@@ -1,17 +1,16 @@
 # Cyber Supplies CLI
 
-You are working on Cyber Supplies CLI. This is a cli tool intended for autonomous security researchers (LLM Agents). It interacts with a cloud-based backend, where we store data and allow the agent to query it.
+You are working on Cyber Supplies CLI. This is a CLI tool intended for autonomous security researchers (LLM Agents). It interacts with a cloud-based backend, where we store data and allow the agent to query it.
 
 ## Architecture
 
 CLI -> Backend -> JavaScript Microservice (endpoints)
-              `-> Authentication Microserice (accounts)
               `-> Cloud Storage (storage)
               `-> PostgreSQL DB (everything else)
 
 ## Output
 
-The tool primarily outputs JSON to the LLM for parsing. We aim to never output plain texts or other formats, as we expect the agent to pipe the results from our tool directly into a JSON parser.
+The tool outputs JSON to the LLM for parsing. We aim to never output plain texts or other formats, as we expect the agent to pipe the results from our tool directly into a JSON parser.
 
 The "error" key is the top level object we use to output errors to the agent. We instruct the agent to check for the existance of this error key as a safety-check, before using the results of our tool in other commands. Errors from the CLI should be surfaced through this key. The backend will always output errors under this key. There is no need for additional parsing of error messages from the backend.
 
@@ -23,9 +22,13 @@ Certain fields from the requests and responses must be encrypted/decrypted befor
 
 You should run unit tests against the features you add into the CLI, checking for edge cases and unexpected output. These unit test files should NEVER be commited into the main code of the CLI. The files in cmd/cysu are reserved strictly for core files, and should not be polluted with anything other than the main code.
 
-## Behaviour
+## Backend
 
-- At times, the development of the CLI may lag behind that of the backend. This is expected. If the user instructs you to make a change that doesn't align with what the backend returns, then ASSUME that the response is correct, and code it exactly as if it was correct.
+At times, the development of the CLI may lag behind that of the backend. This is expected. If the user instructs you to make a change that doesn't align with what the backend returns, then ASSUME that the response is correct, and code it exactly as if it was correct.
+
+There is a Redocly OpenAPI Spec exposed at https://cysu-backend-670100724771.europe-west1.run.app/api, which you can use to cross-reference the expected responses. Always double check the expected responses match up with the spec, and flag anything that deviates from it.
+
+## Behaviour
 
 - Use line breaks where appropriate to format code. Write comments above functions explaining what they are for. Ask the user before implementing any changes that they have not explicity asked for.
 

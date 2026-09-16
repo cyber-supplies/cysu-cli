@@ -21,11 +21,11 @@ A modal response has been provided alongside each command. Use this to parse the
 
 ## Authentication
 
-Every command except `key` and `debug` needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
+Every command except `key` needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
 
 ## Projects
 
-All resources in Cyber Supplies belong to a project. Projects are created by the user. To view available projects:
+Resources in Cyber Supplies often belong to a project. Projects are created by the user. To view available projects:
 
 ```
 cysu projects list
@@ -70,21 +70,10 @@ cysu accounts list
   {
     "id": "acc_01m1r85wgef0x88sa4p8qrkjtb",
     "username": "pentester1",
+    "password": "12345",
     "location": "https://example.com/login"
   }
 ]
-```
-
-To retrieve the authentication for a specific account:
-
-```
-cysu accounts get-auth --account <accountID>
-
-{
-  "id": "<accountID>",
-  "username": "pentester1",
-  "cookies": "session=8f14e45fceea167a; token=5d41402abc4b2a76;"
-}
 ```
 
 **Important** - This returns live credentials. It is highly recommended to parse the JSON and store the credentials inside a file, rather than reading it into context.
@@ -191,12 +180,90 @@ cysu storage upload --file <localFile> --path <storagePath>
 cysu storage download --path <storagePath> --output <localFile>
 ```
 
-To read a stored file without writing it to disk. The contents are base64 encoded, because a stored file may be binary:
+To read a stored file without writing it to disk:
 
 ```
 cysu storage read --path <storagePath>
 
 {
   "data": "<base64>"
+}
+```
+
+**IMPORTANT** - The contents are base64 encoded, because a stored file may be binary. To print the raw contents, decode it first.
+
+## JavaScript
+
+Used for downloading JavaScript files from the target. The JavaScript files for a domain can be downloaded with the following:
+
+```
+cysu javascript download  --domain <target-domain>
+
+{
+  "success": true
+}
+```
+
+The files will then automatically be stored in this directory structure:
+
+```
+~/
+  cysu/
+    js/
+      <target-domain>/
+        path/
+          to/
+            file_1.js
+      <another-domain>/
+        path/
+          to/
+            file_2.js
+```
+
+**CRITICAL** - The JavaScript files returned are ALWAYS beautified and decompressed. Do NOT attempt to do this yourself.
+
+To remove all JavaScript files that are currently downloaded:
+
+```
+cysu javascript clear
+
+{
+  "success": true
+}
+```
+
+## Out-of-Bounds
+
+Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled. Currently does not support hosting payloads.
+
+To create an out-of-bounds URL:
+
+```
+cysu oob create
+
+{
+  "id": "<urlId>",
+  "url": "https://<urlId><nonce>.cybersupplies.site/"
+}
+```
+
+**Important** - Only ONE URL can be active at the same time. If you create a URL, the previous one will CEASE to exists, and it's stored hits will be LOST.
+
+To read the hits from the currently active URL:
+
+```
+cysu oob pull-hits
+
+{
+    "events": [
+       {
+          "protocol": "https",
+          "raw-request": "GET /probe HTTP/1.1\r\nHost: <hostname>\r\n\r\n",
+          "raw-response": "<HTTP response>",
+          "remote-address": "203.0.113.10",
+          "timestamp": "2026-09-14T12:34:56.123456789Z"
+        },
+        ...
+    ]
 }
 ```
