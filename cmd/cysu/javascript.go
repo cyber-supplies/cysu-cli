@@ -29,7 +29,6 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"io"
 	"os"
 	"path/filepath"
@@ -61,10 +60,9 @@ var javascriptResource = resource{
 			name: "download",
 			flags: []flagSpec{
 				{name: "domain", placeholder: "domain", usage: "host the files were collected from", required: true},
-				{name: "output", placeholder: "dir", usage: "directory to extract into (default: $HOME/" + collectionDir + ")"},
 			},
 			run: func(v flagValues) error {
-				return downloadJavascript(v["domain"], v["output"])
+				return downloadJavascript(v["domain"])
 			},
 		},
 	},
@@ -95,10 +93,10 @@ func addJavascriptURLs(urls []string) error {
 }
 
 // downloadJavascript asks the backend for a link to the domain's collection,
-// fetches the archive and unpacks it into output (the user's home by default).
-// The archive is held in memory: the service caps an export at 100 MB.
-func downloadJavascript(domain, output string) error {
-	base, root, err := collectionPaths(output, domain)
+// fetches the archive and unpacks it under the user's home directory. The
+// archive is held in memory: the service caps an export at 100 MB.
+func downloadJavascript(domain string) error {
+	base, root, err := collectionPaths(domain)
 	if err != nil {
 		return err
 	}
@@ -142,27 +140,29 @@ func downloadJavascript(domain, output string) error {
 // ---------------------------------------------------------------------------
 
 // collectionPaths returns the two directories an export is unpacked against:
-// base, which archive entry names are resolved from, and root, the domain's
-// own directory beneath it. Base defaults to cysu-js in the user's home.
+// base, cysu-js in the user's home, which archive entry names are resolved
+// from, and root, the domain's own directory beneath it.
 //
 // They differ because the service already names every entry <host>/<path>,
 // so resolving against base is what puts a file at <base>/<domain>/<path>.
 // Root is still needed on its own: manifest.jsonl sits at the archive root
 // but belongs to the domain, and it is root that is reported to the caller.
-func collectionPaths(output, domain string) (string, string, error) {
+//
+// Where a collection lands is not configurable. Every path in the manifest
+// is relative to base, so a collection moved elsewhere would carry an index
+// that no longer resolves.
+func collectionPaths(domain string) (string, string, error) {
 	name := directoryForDomain(domain)
 	if name == "" {
 		return "", "", failf("--domain must be a host name, e.g. example.com")
 	}
 
-	base := strings.TrimSpace(output)
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", "", failf("finding the home directory: %v", err)
-		}
-		base = filepath.Join(home, collectionDir)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", failf("finding the home directory: %v", err)
 	}
+
+	base := filepath.Join(home, collectionDir)
 	return base, filepath.Join(base, name), nil
 }
 
@@ -242,7 +242,7 @@ func manifestTarget(root, name string) string {
 // that climbs out with "..", starts at the filesystem root, or carries a
 // Windows separator or drive letter is rejected rather than repaired.
 func entryTarget(root, name string) (string, error) {
-	if name == "" || strings.ContainsAny(name, `\`) || strings.HasPrefix(name, "/") || filepath.IsAbs(name) {
+	if name == "" || strings.Contains(name, `\`) || strings.HasPrefix(name, "/") || filepath.IsAbs(name) {
 		return "", failf("refusing archive entry %q: not a relative path", name)
 	}
 	// Cleaning "../x" would quietly turn an escape into a write somewhere else
@@ -255,16 +255,15 @@ func entryTarget(root, name string) (string, error) {
 	}
 
 	target := filepath.Join(root, filepath.FromSlash(name))
-	if target != root && !strings.HasPrefix(target, root+string(os.PathSeparator)) {
+	if !strings.HasPrefix(target, root+string(os.PathSeparator)) {
 		return "", failf("refusing archive entry %q: it escapes the collection directory", name)
 	}
 	return target, nil
 }
 
-// readEntry reads one archive entry, undoing a further layer of gzip if the
-// contents carry one. The service stores objects gzipped and inflates them on
-// the way into the archive, so this normally does nothing; it costs one
-// comparison and means a file is never left on disk still compressed.
+// readEntry reads one archive entry. Contents arrive as they will be written:
+// the service inflates every object on its way into the archive, so nothing
+// here is still compressed beyond the ZIP's own encoding.
 func readEntry(entry *zip.File) ([]byte, error) {
 	rc, err := entry.Open()
 	if err != nil {
@@ -276,19 +275,5 @@ func readEntry(entry *zip.File) ([]byte, error) {
 	if err != nil {
 		return nil, failf("reading archive entry %q: %v", entry.Name, err)
 	}
-	if !bytes.HasPrefix(contents, []byte{0x1f, 0x8b}) {
-		return contents, nil
-	}
-
-	gz, err := gzip.NewReader(bytes.NewReader(contents))
-	if err != nil {
-		return contents, nil // Not gzip after all; keep what was stored.
-	}
-	defer gz.Close()
-
-	plain, err := io.ReadAll(gz)
-	if err != nil {
-		return nil, failf("decompressing archive entry %q: %v", entry.Name, err)
-	}
-	return plain, nil
+	return contents, nil
 }
