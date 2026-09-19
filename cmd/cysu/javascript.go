@@ -16,12 +16,15 @@ package main
 // keeps one collection per user per domain and the backend identifies the user
 // from the token, so neither command takes --project.
 //
-// The archive is extracted under $HOME/cysu-js/<domain>/ exactly as it is laid
-// out inside, because manifest.jsonl at the root names every file and every
-// analyzer match by that same path. Keeping the two in step is the point of
-// the manifest: a match line is enough to open the right file at the right
-// line. Entry names come from a remote site's URLs, so each one is checked to
-// be sure it stays inside the collection directory.
+// The archive is extracted under $HOME/cysu-js exactly as it is laid out
+// inside, which puts a domain's files at $HOME/cysu-js/<domain>/<path>: the
+// service names every entry <host>/<path> already. Names are kept rather than
+// rewritten because manifest.jsonl indexes every file and every analyzer match
+// by that same path, and keeping the two in step is the point of the manifest -
+// a match line is enough to open the right file at the right line. The
+// manifest itself travels at the archive root and is written into the domain's
+// directory, one per collection. Entry names come from a remote site's URLs,
+// so each one is checked to be sure it stays inside cysu-js.
 
 import (
 	"archive/zip"
@@ -95,7 +98,7 @@ func addJavascriptURLs(urls []string) error {
 // fetches the archive and unpacks it into output (the user's home by default).
 // The archive is held in memory: the service caps an export at 100 MB.
 func downloadJavascript(domain, output string) error {
-	root, err := collectionRoot(output, domain)
+	base, root, err := collectionPaths(output, domain)
 	if err != nil {
 		return err
 	}
@@ -119,7 +122,7 @@ func downloadJavascript(domain, output string) error {
 		return failf("downloading the %s collection: %v", domain, err)
 	}
 
-	files, written, err := extractArchive(archive, root)
+	files, written, err := extractArchive(archive, base, root)
 	if err != nil {
 		return err
 	}
@@ -138,22 +141,29 @@ func downloadJavascript(domain, output string) error {
 // Extraction
 // ---------------------------------------------------------------------------
 
-// collectionRoot is where a domain's files belong: <output>/<domain>, with
-// output defaulting to cysu-js in the user's home directory.
-func collectionRoot(output, domain string) (string, error) {
+// collectionPaths returns the two directories an export is unpacked against:
+// base, which archive entry names are resolved from, and root, the domain's
+// own directory beneath it. Base defaults to cysu-js in the user's home.
+//
+// They differ because the service already names every entry <host>/<path>,
+// so resolving against base is what puts a file at <base>/<domain>/<path>.
+// Root is still needed on its own: manifest.jsonl sits at the archive root
+// but belongs to the domain, and it is root that is reported to the caller.
+func collectionPaths(output, domain string) (string, string, error) {
 	name := directoryForDomain(domain)
 	if name == "" {
-		return "", failf("--domain must be a host name, e.g. example.com")
+		return "", "", failf("--domain must be a host name, e.g. example.com")
 	}
 
-	if strings.TrimSpace(output) == "" {
+	base := strings.TrimSpace(output)
+	if base == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", failf("finding the home directory: %v", err)
+			return "", "", failf("finding the home directory: %v", err)
 		}
-		output = filepath.Join(home, collectionDir)
+		base = filepath.Join(home, collectionDir)
 	}
-	return filepath.Join(output, name), nil
+	return base, filepath.Join(base, name), nil
 }
 
 // directoryForDomain renders a host as one path component. A non-default port
@@ -169,10 +179,16 @@ func directoryForDomain(domain string) string {
 	return strings.ReplaceAll(name, ":", "_")
 }
 
-// extractArchive writes every entry of a ZIP under root, returning how many
+// extractArchive writes every entry of a ZIP under base, returning how many
 // files were written and their total size. Directories are created as needed;
 // the archive's own directory entries carry nothing and are skipped.
-func extractArchive(archive []byte, root string) (int, int64, error) {
+//
+// Entry names are kept as they are, since the service has already prefixed
+// each one with the host it was collected from; base is therefore the parent
+// of the domain directory, not the domain directory itself. The exception is
+// manifest.jsonl, which the archive keeps at its root and which is written
+// into root instead, one manifest per domain.
+func extractArchive(archive []byte, base, root string) (int, int64, error) {
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
 		return 0, 0, failf("the export is not a readable ZIP archive: %v", err)
@@ -185,9 +201,12 @@ func extractArchive(archive []byte, root string) (int, int64, error) {
 			continue
 		}
 
-		target, err := entryTarget(root, entry.Name)
-		if err != nil {
-			return 0, 0, err
+		target := manifestTarget(root, entry.Name)
+		if target == "" {
+			var err error
+			if target, err = entryTarget(base, entry.Name); err != nil {
+				return 0, 0, err
+			}
 		}
 
 		contents, err := readEntry(entry)
@@ -204,6 +223,17 @@ func extractArchive(archive []byte, root string) (int, int64, error) {
 	}
 
 	return files, written, nil
+}
+
+// manifestTarget is the path manifest.jsonl is written to, or "" when the
+// entry is an ordinary file. The manifest indexes one domain's collection but
+// travels at the archive root, so it is the one entry moved on the way out:
+// every other name already carries the host and is left alone.
+func manifestTarget(root, name string) string {
+	if name != manifestName {
+		return ""
+	}
+	return filepath.Join(root, manifestName)
 }
 
 // entryTarget resolves one entry name to the file it should be written to,
