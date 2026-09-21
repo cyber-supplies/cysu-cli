@@ -5,8 +5,9 @@ package main
 // Design:
 //
 //   - On first run the user is prompted for a passphrase. The passphrase is
-//     stretched with Argon2id (64 MiB, 3 passes, 4 lanes) and a random
-//     16-byte salt into a 256-bit master key.
+//     stretched with Argon2id (64 MiB, 3 passes, 4 lanes) and a fixed,
+//     CYSU-specific domain salt into a 256-bit master key. This intentionally
+//     makes the same passphrase reproduce the same key on every machine.
 //   - The derived key, salt and KDF parameters are written to a key file with
 //     mode 0600 inside a 0700 directory in the user's config directory
 //     (Linux: $XDG_CONFIG_HOME/cysu/master.key, default ~/.config/cysu/;

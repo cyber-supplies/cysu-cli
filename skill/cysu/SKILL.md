@@ -80,6 +80,8 @@ cysu accounts list
 
 ## Endpoints
 
+**CRITICALL** - NOT IMPLEMENTED
+
 **CRITICAL** - Requires project selection OR specified flag
 
 To view the collected endpoints for a target:
@@ -266,6 +268,8 @@ cysu javascript clear
 ```
 
 ## Out-of-Bounds
+
+**CRITICAL** - NOT IMPLEMENTED
 
 Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled. Currently does not support hosting payloads.
 

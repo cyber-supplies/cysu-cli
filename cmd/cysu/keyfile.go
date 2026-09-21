@@ -7,7 +7,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,13 +24,17 @@ import (
 const (
 	keyFileName    = "master.key"
 	keyFileVersion = 1
-	saltLen        = 16
+	masterKeySalt  = "cysu-cli/master-key/v1"
 
 	// Argon2id parameters (RFC 9106 second recommended option).
 	argonTime    uint32 = 3
 	argonMemory  uint32 = 64 * 1024 // KiB, i.e. 64 MiB
 	argonThreads uint8  = 4
 )
+
+// masterKeySalt domain-separates CYSU keys from keys derived from the same
+// passphrase by other applications. It and the Argon2 parameters above are a
+// compatibility contract: changing them changes every derived master key.
 
 // keyFile is the on-disk representation of the master key. []byte fields are
 // base64-encoded by encoding/json.
@@ -151,10 +154,7 @@ func createKeyFile(path string) (*keyFile, error) {
 	}
 	defer zero(pass)
 
-	salt := make([]byte, saltLen)
-	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return nil, fmt.Errorf("generating salt: %w", err)
-	}
+	salt := []byte(masterKeySalt)
 
 	kf := &keyFile{
 		Version: keyFileVersion,
@@ -163,7 +163,7 @@ func createKeyFile(path string) (*keyFile, error) {
 		Time:    argonTime,
 		Memory:  argonMemory,
 		Threads: argonThreads,
-		Key:     deriveKey(pass, salt, argonTime, argonMemory, argonThreads),
+		Key:     deriveMasterKey(pass),
 		Created: time.Now().UTC(),
 	}
 
@@ -224,6 +224,13 @@ func writeKeyFile(path string, kf *keyFile) error {
 		return fmt.Errorf("installing key file: %w", err)
 	}
 	return nil
+}
+
+// deriveMasterKey deterministically derives the CYSU master key from only the
+// passphrase. The fixed salt is an application-specific domain separator, not
+// secret state.
+func deriveMasterKey(pass []byte) []byte {
+	return deriveKey(pass, []byte(masterKeySalt), argonTime, argonMemory, argonThreads)
 }
 
 // deriveKey stretches a passphrase into a keyLen-byte key with Argon2id.

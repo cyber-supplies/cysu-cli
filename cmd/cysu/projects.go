@@ -80,6 +80,9 @@ func runSelectProject(id string) error {
 	if _, err := send("GET", apiPath("projects", id), nil); err != nil {
 		return err
 	}
+	if _, err := selectProject(id); err != nil {
+		return err
+	}
 
 	return printJSON(struct {
 		Project string `json:"project"`
