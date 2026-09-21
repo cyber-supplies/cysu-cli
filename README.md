@@ -77,8 +77,8 @@ Storage:
   cysu storage read      [--project <id>] --path <path>
 
 JavaScript:
-  cysu javascript add       --url
-  cysu javascript download  --domain
+  cysu javascript add       --url <url> [--url <url>...]
+  cysu javascript download  --domain <domain>
   cysu javascript clear
 
 Skills:

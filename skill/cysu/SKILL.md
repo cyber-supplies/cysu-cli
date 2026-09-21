@@ -194,13 +194,33 @@ cysu storage read --path <storagePath>
 
 ## JavaScript
 
-Used for downloading JavaScript files from the target. The JavaScript files for a domain can be downloaded with the following:
+Used for collecting and downloading the JavaScript from the target. This is two steps, some time apart.
+
+First, submit one or more URLs. A page URL is enough, the service follows every script reference and chunk it finds from there:
+
+```
+cysu javascript add  --url <url> [--url <url>...]
+
+{
+  "success": true,
+  "urls": ["https://example.com/"]
+}
+```
+
+**IMPORTANT** - Submitting only queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map. This takes time. Downloading before the service has finished returns `{"error": "No matching files to export"}` rather than an empty result.
+
+Once collected, the JavaScript files for a domain can be downloaded with the following:
 
 ```
 cysu javascript download  --domain <target-domain>
 
 {
-  "success": true
+  "success": true,
+  "domain": "example.com",
+  "output": "/home/user/cysu-js/example.com",
+  "manifest": "/home/user/cysu-js/example.com/manifest.jsonl",
+  "files": 31,
+  "size": 2483910
 }
 ```
 
@@ -208,19 +228,32 @@ The files will then automatically be stored in this directory structure:
 
 ```
 ~/
-  cysu/
-    js/
-      <target-domain>/
-        path/
-          to/
-            file_1.js
-      <another-domain>/
-        path/
-          to/
-            file_2.js
+  cysu-js/
+    <target-domain>/
+      manifest.jsonl
+      path/
+        to/
+          file_1.js
+    <another-domain>/
+      path/
+        to/
+          file_2.js
+    sources/          originals recovered from source maps
+    historical/       earlier versions of a file
 ```
 
 **CRITICAL** - The JavaScript files returned are ALWAYS beautified and decompressed. Do NOT attempt to do this yourself.
+
+**IMPORTANT** - Each domain directory holds a `manifest.jsonl`, which indexes the collection as JSON Lines. Use it to find matches rather than grepping the tree. An `export` header first, then a `file` line per script and a `source` line per original recovered from a source map, then every `match`:
+
+```
+{"type": "export", "domain": "example.com", "files": 31, "matches": 412}
+{"type": "file",   "path": "example.com/static/app.js", "analysis": "complete"}
+{"type": "source", "path": "sources/…/src/api.ts", "bundle": "example.com/static/app.js"}
+{"type": "match",  "path": "example.com/static/app.js", "kind": "url", "value": "/api/v2/users", "line": 412}
+```
+
+Paths are relative to `~/cysu-js`, so a match line opens the right file at the right line.
 
 To remove all JavaScript files that are currently downloaded:
 
