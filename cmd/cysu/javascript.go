@@ -6,15 +6,17 @@ package main
 // Two steps, some time apart. Submitting a URL only queues it; the service
 // fetches the page, follows every script reference and chunk it can find,
 // beautifies and analyses each file and recovers original sources from any
-// source map. Downloading then takes everything collected for one domain:
+// source map. Listing shows what has been collected for one domain so far, and
+// downloading then takes all of it:
 //
-//	add       POST /javascript/add    {url}      -> queued, nothing returned
+//	add       POST /javascript        {url}      -> queued, nothing returned
+//	list      POST /javascript/list   {domain}   -> [{path, updatedAt, status}]
 //	download  POST /javascript/export {domain}   -> {url, expiresAt}
 //	          then GET url, a ZIP of the collection
 //
 // Unlike the rest of the CLI these routes are not project-scoped. The service
 // keeps one collection per user per domain and the backend identifies the user
-// from the token, so neither command takes --project.
+// from the token, so no command takes --project.
 //
 // The archive is extracted under $HOME/cysu-js exactly as it is laid out
 // inside, which puts a domain's files at $HOME/cysu-js/<domain>/<path>: the
@@ -57,6 +59,15 @@ var javascriptResource = resource{
 			},
 		},
 		{
+			name: "list",
+			flags: []flagSpec{
+				{name: "domain", placeholder: "domain", usage: "host the files were collected from", required: true},
+			},
+			run: func(v flagValues) error {
+				return listJavascript(v["domain"])
+			},
+		},
+		{
 			name: "download",
 			flags: []flagSpec{
 				{name: "domain", placeholder: "domain", usage: "host the files were collected from", required: true},
@@ -81,7 +92,7 @@ func addJavascriptURLs(urls []string) error {
 		if strings.TrimSpace(raw) == "" {
 			return failf("--url must not be empty")
 		}
-		if _, err := send("POST", apiPath("javascript", "add"), map[string]any{"url": raw}); err != nil {
+		if _, err := send("POST", apiPath("javascript"), map[string]any{"url": raw}); err != nil {
 			return err
 		}
 	}
@@ -90,6 +101,18 @@ func addJavascriptURLs(urls []string) error {
 		Success bool     `json:"success"`
 		URLs    []string `json:"urls"`
 	}{true, urls})
+}
+
+// listJavascript prints the files collected for one domain so far, each with
+// its path, when it last changed and its status ("current" for a file still
+// served, as opposed to a retired or historical one). The backend's array
+// is passed through as it is. A blank domain is refused here rather than sent,
+// since the backend would only reject it.
+func listJavascript(domain string) error {
+	if strings.TrimSpace(domain) == "" {
+		return failf("--domain must not be empty")
+	}
+	return request("POST", apiPath("javascript", "list"), map[string]any{"domain": domain})
 }
 
 // downloadJavascript asks the backend for a link to the domain's collection,

@@ -78,6 +78,7 @@ Storage:
 
 JavaScript:
   cysu javascript add       --url <url> [--url <url>...]
+  cysu javascript list      --domain <domain>
   cysu javascript download  --domain <domain>
   cysu javascript clear
 
