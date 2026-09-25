@@ -25,6 +25,7 @@ var resources = []resource{
 	endpointsResource,
 	javascriptResource,
 	storageResource,
+	proxyResource,
 	keyResource,
 	debugResource,
 }
