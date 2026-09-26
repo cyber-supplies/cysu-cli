@@ -192,7 +192,7 @@ cysu storage read --path <storagePath>
 }
 ```
 
-**IMPORTANT** - The contents are base64 encoded, because a stored file may be binary. To print the raw contents, decode it first.
+**Important** - The contents are base64 encoded, because a stored file may be binary. To print the raw contents, decode it first.
 
 ## JavaScript
 
@@ -209,7 +209,7 @@ cysu javascript add  --url <url> [--url <url>...]
 }
 ```
 
-**IMPORTANT** - Submitting only queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map. This takes time. Downloading before the service has finished returns `{"error": "No matching files to export"}` rather than an empty result.
+**Important** - Submitting only queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map.
 
 To check what has been collected for a domain so far, without downloading it:
 
@@ -221,14 +221,12 @@ cysu javascript list  --domain <target-domain>
     "path": "example.com/static/app.js",
     "updatedAt": "2026-09-25T10:00:00.000Z",
     "status": "current"
-  }
+  },
+  ...
 ]
 ```
 
-**IMPORTANT** - The list fills in while the service is still crawling, one file at a time, so a short or empty list (`[]`) may just mean it hasn't finished. There is no "finished" signal; if the count stops growing between checks, the crawl is likely done. Files appear before their analysis completes, so run `download` a little after the list settles.
-
-**IMPORTANT** - Files are grouped by the host that served them. Scripts a page loads from another host (e.g. a CDN) are listed and downloaded under that host's domain, not the page's.
-
+Files are grouped by the host that served them. Scripts loaded from another host (e.g. a CDN) are listed and downloaded under that domain.
 
 Once collected, the JavaScript files for a domain can be downloaded with the following:
 
@@ -265,7 +263,7 @@ The files will then automatically be stored in this directory structure:
 
 **CRITICAL** - The JavaScript files returned are ALWAYS beautified and decompressed. Do NOT attempt to do this yourself.
 
-**IMPORTANT** - Each domain directory holds a `manifest.jsonl`, which indexes the collection as JSON Lines. Use it to find matches rather than grepping the tree. An `export` header first, then a `file` line per script and a `source` line per original recovered from a source map, then every `match`:
+Each domain directory holds a `manifest.jsonl`, which indexes the collection as JSON Lines. Use it to find matches rather than grepping the tree. An `export` header first, then a `file` line per script and a `source` line per original recovered from a source map, then every `match`:
 
 ```
 {"type": "export", "domain": "example.com", "files": 31, "matches": 412}
