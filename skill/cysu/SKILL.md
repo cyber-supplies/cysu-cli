@@ -194,6 +194,25 @@ cysu storage read --path <storagePath>
 
 **Important** - The contents are base64 encoded, because a stored file may be binary. To print the raw contents, decode it first.
 
+## Findings
+
+**CRITICAL** - Requires project selection OR specified flag
+
+Used for writing finished vulnerability reports to the user.
+
+To create a new finding:
+
+```
+cysu findings create --title <title> --desc <description> --severity [LOW|MEDIUM|HIGH|CRITICAL]
+
+{
+  "id": "fnd_01m3f5vrxgeembs0ewyv5np6v0",
+  "severity": "LOW",
+  "title": "<title>",
+  "description": "<description>"
+}
+```
+
 ## JavaScript
 
 Used for collecting and downloading the JavaScript from the target. This is two steps, some time apart.
@@ -242,6 +261,8 @@ cysu javascript download  --domain <target-domain>
   "size": 2483910
 }
 ```
+
+**Important** - This can take up to 2 minutes.
 
 The files will then automatically be stored in this directory structure:
 

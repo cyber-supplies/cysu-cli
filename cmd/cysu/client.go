@@ -93,6 +93,12 @@ func request(method, path string, body any) error {
 // status becomes a cliError that echoes the backend's own error body (see
 // backendError).
 func send(method, path string, body any) ([]byte, error) {
+	return sendWithTimeout(method, path, body, httpClient.Timeout)
+}
+
+// sendWithTimeout sends a backend request with a command-specific deadline,
+// keeping the shared client's timeout unchanged for other API requests.
+func sendWithTimeout(method, path string, body any, timeout time.Duration) ([]byte, error) {
 	var encoded []byte
 	var reader io.Reader
 	if body != nil {
@@ -118,7 +124,9 @@ func send(method, path string, body any) ([]byte, error) {
 	n := traceRequest(method, endpoint, req.Header, encoded)
 	start := time.Now()
 
-	resp, err := httpClient.Do(req)
+	client := *httpClient
+	client.Timeout = timeout
+	resp, err := client.Do(req)
 	if err != nil {
 		cause := transportError(err)
 		traceFailure(n, time.Since(start), cause)

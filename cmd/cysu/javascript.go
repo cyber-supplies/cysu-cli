@@ -35,6 +35,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // collectionDir is the directory under the user's home where downloaded
@@ -124,7 +125,8 @@ func downloadJavascript(domain string) error {
 		return err
 	}
 
-	raw, err := send("POST", apiPath("javascript", "export"), map[string]any{"domain": domain})
+	// The service builds and uploads the archive before returning its link.
+	raw, err := sendWithTimeout("POST", apiPath("javascript", "export"), map[string]any{"domain": domain}, 2*time.Minute)
 	if err != nil {
 		return err
 	}

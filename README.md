@@ -126,8 +126,3 @@ provide it through the environment rather than a command-line argument:
 ```sh
 CYSU_PASSPHRASE="$SECRET" cysu key init
 ```
-
-The local key file caches the derived key so the passphrase is not required on
-every invocation. Keep both the passphrase and key file private.
-Use a unique, high-entropy passphrase because deterministic derivation cannot
-use a random per-key salt to slow precomputed guessing attacks.
