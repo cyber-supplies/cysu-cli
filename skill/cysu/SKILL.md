@@ -211,6 +211,25 @@ cysu javascript add  --url <url> [--url <url>...]
 
 **IMPORTANT** - Submitting only queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map. This takes time. Downloading before the service has finished returns `{"error": "No matching files to export"}` rather than an empty result.
 
+To check what has been collected for a domain so far, without downloading it:
+
+```
+cysu javascript list  --domain <target-domain>
+
+[
+  {
+    "path": "example.com/static/app.js",
+    "updatedAt": "2026-09-25T10:00:00.000Z",
+    "status": "current"
+  }
+]
+```
+
+**IMPORTANT** - The list fills in while the service is still crawling, one file at a time, so a short or empty list (`[]`) may just mean it hasn't finished. There is no "finished" signal; if the count stops growing between checks, the crawl is likely done. Files appear before their analysis completes, so run `download` a little after the list settles.
+
+**IMPORTANT** - Files are grouped by the host that served them. Scripts a page loads from another host (e.g. a CDN) are listed and downloaded under that host's domain, not the page's.
+
+
 Once collected, the JavaScript files for a domain can be downloaded with the following:
 
 ```
