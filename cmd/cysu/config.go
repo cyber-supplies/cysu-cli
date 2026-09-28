@@ -21,6 +21,10 @@ const configFileName = "config.json"
 // config is the on-disk shape of the settings file.
 type config struct {
 	Project string `json:"project,omitempty"`
+	// OOB is the correlation id of the caller's current out-of-bounds
+	// endpoint, saved by `cysu oob create` and read by `cysu oob pull-hits`
+	// (see oob.go). A user has at most one at a time, so one field is enough.
+	OOB string `json:"oob,omitempty"`
 }
 
 // configPath returns the location of the settings file: config.json in the
@@ -104,6 +108,32 @@ func currentProject() (string, error) {
 		return "", err
 	}
 	return cfg.Project, nil
+}
+
+// ---------------------------------------------------------------------------
+// Out-of-bounds endpoint
+// ---------------------------------------------------------------------------
+
+// setOOB records id as the correlation id of the caller's current OOB
+// endpoint, so `cysu oob pull-hits` knows which endpoint to read.
+func setOOB(id string) error {
+	cfg, err := readConfig()
+	if err != nil {
+		return err
+	}
+	cfg.OOB = id
+	_, err = writeConfig(cfg)
+	return err
+}
+
+// currentOOB returns the saved OOB correlation id, or "" when none has been
+// created yet.
+func currentOOB() (string, error) {
+	cfg, err := readConfig()
+	if err != nil {
+		return "", err
+	}
+	return cfg.OOB, nil
 }
 
 // defaultProject is projectFlag's fallback: the selected project, or a usage

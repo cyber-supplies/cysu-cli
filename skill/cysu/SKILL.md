@@ -307,8 +307,6 @@ cysu javascript clear
 
 ## Out-of-Bounds
 
-**CRITICAL** - NOT IMPLEMENTED
-
 Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled. Currently does not support hosting payloads.
 
 To create an out-of-bounds URL:
@@ -318,27 +316,26 @@ cysu oob create
 
 {
   "id": "<urlId>",
-  "url": "https://<urlId><nonce>.cybersupplies.site/"
+  "url": "https://<urlId><nonce>.cybersupplies.site"
 }
 ```
 
-**Important** - Only ONE URL can be active at the same time. If you create a URL, the previous one will CEASE to exists, and it's stored hits will be LOST.
+**Important** - Only ONE URL can be active at a time. Creating a new URL deregisters the previous one AND clears its locally stored hits.
 
 To read the hits from the currently active URL:
 
 ```
 cysu oob pull-hits
 
-{
-    "events": [
-       {
-          "protocol": "https",
-          "raw-request": "GET /probe HTTP/1.1\r\nHost: <hostname>\r\n\r\n",
-          "raw-response": "<HTTP response>",
-          "remote-address": "203.0.113.10",
-          "timestamp": "2026-09-14T12:34:56.123456789Z"
-        },
-        ...
-    ]
-}
+[
+  {
+    "protocol": "https",
+    "raw-request": "GET /probe HTTP/1.1\r\nHost: <hostname>\r\n\r\n",
+    "raw-response": "<HTTP response>",
+    "remote-address": "203.0.113.10",
+    "timestamp": "2026-09-14T12:34:56.123456789Z"
+  }
+]
 ```
+
+**Important** - `pull-hits` returns the FULL history of every hit seen so far, and is safe to call repeatedly — each call also fetches any new hits and adds them. An empty array `[]` means no hits have arrived yet.
