@@ -6,11 +6,11 @@ package main
 // Two steps, some time apart. Submitting a URL only queues it; the service
 // fetches the page, follows every script reference and chunk it can find,
 // beautifies and analyses each file and recovers original sources from any
-// source map. Listing shows what has been collected for one domain so far, and
-// downloading then takes all of it:
+// source map. Listing shows what has been collected so far, optionally for one
+// domain, and downloading then takes one domain's collection:
 //
 //	add       POST /javascript        {url}      -> queued, nothing returned
-//	list      POST /javascript/list   {domain}   -> [{path, updatedAt, status}]
+//	list      POST /javascript/list   {domain} or {} -> [{path, updatedAt, status}]
 //	download  POST /javascript/export {domain}   -> {url, expiresAt}
 //	          then GET url, a ZIP of the collection
 //
@@ -62,7 +62,7 @@ var javascriptResource = resource{
 		{
 			name: "list",
 			flags: []flagSpec{
-				{name: "domain", placeholder: "domain", usage: "host the files were collected from", required: true},
+				{name: "domain", placeholder: "domain", usage: "host the files were collected from (omit to list all domains)"},
 			},
 			run: func(v flagValues) error {
 				return listJavascript(v["domain"])
@@ -104,16 +104,19 @@ func addJavascriptURLs(urls []string) error {
 	}{true, urls})
 }
 
-// listJavascript prints the files collected for one domain so far, each with
+// listJavascript prints the files collected so far, each with
 // its path, when it last changed and its status ("current" for a file still
 // served, as opposed to a retired or historical one). The backend's array
-// is passed through as it is. A blank domain is refused here rather than sent,
-// since the backend would only reject it.
+// is passed through as it is. An omitted domain sends an empty JSON object.
 func listJavascript(domain string) error {
-	if strings.TrimSpace(domain) == "" {
-		return failf("--domain must not be empty")
+	body := map[string]any{}
+	if domain != "" {
+		if strings.TrimSpace(domain) == "" {
+			return failf("--domain must not be empty")
+		}
+		body["domain"] = domain
 	}
-	return request("POST", apiPath("javascript", "list"), map[string]any{"domain": domain})
+	return request("POST", apiPath("javascript", "list"), body)
 }
 
 // downloadJavascript asks the backend for a link to the domain's collection,

@@ -215,25 +215,25 @@ cysu findings create --title <title> --desc <description> --severity [LOW|MEDIUM
 
 ## JavaScript
 
-Used for collecting and downloading the JavaScript from the target. This is two steps, some time apart.
+Used for collecting and downloading the JavaScript from the target.
 
-First, submit one or more URLs. A page URL is enough, the service follows every script reference and chunk it finds from there:
+First, submit one or more URLs. The best URLs to use are main JavaScript files, which are often held on a separate CDN domain:
 
 ```
 cysu javascript add  --url <url> [--url <url>...]
 
 {
   "success": true,
-  "urls": ["https://example.com/"]
+  "urls": ["https://cdn.example.com/assets/index.js"]
 }
 ```
 
-**Important** - Submitting only queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map.
+**Important** - Submitting queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map.
 
-To check what has been collected for a domain so far, without downloading it:
+To check what has been collected so far, optionally filtered by domain, without downloading it:
 
 ```
-cysu javascript list  --domain <target-domain>
+cysu javascript list  [--domain <target-domain>]
 
 [
   {
@@ -279,7 +279,7 @@ The files will then automatically be stored in this directory structure:
         to/
           file_2.js
     sources/          originals recovered from source maps
-    historical/       earlier versions of a file
+    historical/       earlier versions of a file (if requested)
 ```
 
 **CRITICAL** - The JavaScript files returned are ALWAYS beautified and decompressed. Do NOT attempt to do this yourself.
@@ -338,4 +338,4 @@ cysu oob pull-hits
 ]
 ```
 
-**Important** - `pull-hits` returns the FULL history of every hit seen so far, and is safe to call repeatedly — each call also fetches any new hits and adds them. An empty array `[]` means no hits have arrived yet.
+This returns the FULL history of every hit seen so far, and is safe to call repeatedly. Each call also fetches any new hits and adds them. An empty array `[]` means no hits have arrived yet.

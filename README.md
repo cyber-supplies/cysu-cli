@@ -78,7 +78,7 @@ Storage:
 
 JavaScript:
   cysu javascript add       --url <url> [--url <url>...]
-  cysu javascript list      --domain <domain>
+  cysu javascript list      [--domain <domain>]
   cysu javascript download  --domain <domain>
   cysu javascript clear
 
@@ -114,15 +114,4 @@ It is also possible to pass the token directly via a CLI flag:
 
 ```
 cysu projects list --token sk-xxxx
-```
-
-## Encryption key
-
-The CLI derives its encryption key deterministically from a passphrase. The
-same passphrase produces the same key on every machine, so the passphrase is
-all that is required to recover encrypted data. For headless initialization,
-provide it through the environment rather than a command-line argument:
-
-```sh
-CYSU_PASSPHRASE="$SECRET" cysu key init
 ```
