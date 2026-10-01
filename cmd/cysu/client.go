@@ -17,10 +17,10 @@ import (
 	"time"
 )
 
-// defaultBaseURL is the backend the CLI talks to unless CYSU_API_URL is set.
-const defaultBaseURL = "https://cysu-backend-670100724771.europe-west1.run.app"
+// defaultBaseURL is the gateway the CLI talks to unless CYSU_API_URL is set.
+const defaultBaseURL = "https://cysu-gateway-670100724771.europe-west1.run.app"
 
-// apiRoot is the common prefix of every backend route.
+// apiRoot is the common prefix of every gateway route.
 const apiRoot = "/api"
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -56,7 +56,7 @@ func loadAPIToken(v flagValues) error {
 // Requests
 // ---------------------------------------------------------------------------
 
-// resolveBaseURL returns the backend base URL without a trailing slash,
+// resolveBaseURL returns the gateway base URL without a trailing slash,
 // honouring the CYSU_API_URL override.
 func resolveBaseURL() string {
 	base := os.Getenv("CYSU_API_URL")
@@ -68,7 +68,7 @@ func resolveBaseURL() string {
 
 // apiPath joins segments into a route below apiRoot, escaping each one so a
 // user-supplied id cannot alter the path. For example
-// apiPath("projects", id, "findings") gives "/projects/<id>/findings".
+// apiPath("storage", "files", id) gives "/storage/files/<id>".
 func apiPath(segments ...string) string {
 	escaped := make([]string, len(segments))
 	for i, s := range segments {

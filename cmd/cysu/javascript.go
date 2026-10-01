@@ -14,9 +14,8 @@ package main
 //	download  POST /javascript/export {domain}   -> {url, expiresAt}
 //	          then GET url, a ZIP of the collection
 //
-// Unlike the rest of the CLI these routes are not project-scoped. The service
-// keeps one collection per user per domain and the backend identifies the user
-// from the token, so no command takes --project.
+// The service keeps one collection per user per domain. The gateway identifies
+// the user from the token, so no command takes a user ID.
 //
 // The archive is extracted under $HOME/cysu-js exactly as it is laid out
 // inside, which puts a domain's files at $HOME/cysu-js/<domain>/<path>: the

@@ -1,7 +1,7 @@
 package main
 
 // trace.go implements the CLI's debug tracing. With it on, every exchange
-// with the backend is reported on stderr as it happens, so a command that
+// with the gateway is reported on stderr as it happens, so a command that
 // fails can be diagnosed from the request that caused it rather than from the
 // error alone. It is switched on by CYSU_DEBUG or by --debug.
 //
@@ -59,7 +59,7 @@ var (
 var debugFlag = flagSpec{
 	name:    "debug",
 	boolean: true,
-	usage:   "trace backend requests on stderr (or set CYSU_DEBUG=1)",
+	usage:   "trace gateway requests on stderr (or set CYSU_DEBUG=1)",
 }
 
 // setTracing turns tracing on or off.
@@ -419,4 +419,16 @@ func jsonString(s string) json.RawMessage {
 		return json.RawMessage(`""`)
 	}
 	return encoded
+}
+
+// marshalJSON encodes values without HTML escaping so traced request bodies
+// remain legible while retaining the redaction applied before this call.
+func marshalJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }

@@ -53,3 +53,10 @@ func TestJavascriptListRequestBody(t *testing.T) {
 		})
 	}
 }
+
+func setTestAPIToken(t *testing.T) {
+	t.Helper()
+	previous := apiToken
+	apiToken = "test-token"
+	t.Cleanup(func() { apiToken = previous })
+}

@@ -1,15 +1,15 @@
 package main
 
-// storage.go is the `cysu storage` command: files kept on the backend so they
+// storage.go is the `cysu storage` command: user-owned files kept in GCS so they
 // are reachable from any machine or session.
 //
-// The backend never carries file contents itself. It hands out short-lived
+// The API never carries file contents itself. It hands out short-lived
 // presigned URLs (see the Storage routes in openapi.yaml):
 //
-//	list      GET  /projects/{id}/storage/files          -> [{id, path}, ...]
-//	upload    POST /projects/{id}/storage/files {path}   -> {id, path, uploadUrl}
+//	list      GET  /storage/files          -> [{id, path}, ...]
+//	upload    POST /storage/files {path}   -> {id, path, uploadUrl}
 //	          then PUT the contents to uploadUrl
-//	download  GET  /projects/{id}/storage/files/{fileId} -> {id, path, downloadUrl}
+//	download  GET  /storage/files/{fileId} -> {id, path, downloadUrl}
 //	          then GET downloadUrl
 //	read      as download, but the contents are printed (base64) rather
 //	          than written to a local file
@@ -46,43 +46,39 @@ var storageResource = resource{
 		{
 			name: "list",
 			flags: []flagSpec{
-				projectFlag,
 				{name: "dir", placeholder: "dir", usage: "only list files under this directory"},
 			},
 			run: func(v flagValues) error {
-				return listFiles(v["project"], v["dir"])
+				return listFiles(v["dir"])
 			},
 		},
 		{
 			name: "upload",
 			flags: []flagSpec{
-				projectFlag,
 				{name: "file", placeholder: "local", usage: "local file to upload", required: true},
 				{name: "path", placeholder: "path", usage: "destination path in storage", required: true},
 			},
 			run: func(v flagValues) error {
-				return uploadFile(v["project"], v["file"], v["path"])
+				return uploadFile(v["file"], v["path"])
 			},
 		},
 		{
 			name: "download",
 			flags: []flagSpec{
-				projectFlag,
 				{name: "path", placeholder: "path", usage: "path of the file in storage", required: true},
 				{name: "output", placeholder: "local", usage: "local file to write", required: true},
 			},
 			run: func(v flagValues) error {
-				return downloadFile(v["project"], v["path"], v["output"])
+				return downloadFile(v["path"], v["output"])
 			},
 		},
 		{
 			name: "read",
 			flags: []flagSpec{
-				projectFlag,
 				{name: "path", placeholder: "path", usage: "path of the file in storage", required: true},
 			},
 			run: func(v flagValues) error {
-				return readFile(v["project"], v["path"])
+				return readFile(v["path"])
 			},
 		},
 	},
@@ -92,11 +88,11 @@ var storageResource = resource{
 // Commands
 // ---------------------------------------------------------------------------
 
-// listFiles prints the project's file listing. Without dir the backend
+// listFiles prints the user's file listing. Without dir the API
 // response is printed as is. With dir the listing is filtered here (the
 // backend has no directory concept) and printed as {success, dir, files}.
-func listFiles(project, dir string) error {
-	raw, err := send("GET", apiPath("projects", project, "storage", "files"), nil)
+func listFiles(dir string) error {
+	raw, err := send("GET", apiPath("storage", "files"), nil)
 	if err != nil {
 		return err
 	}
@@ -125,7 +121,7 @@ func listFiles(project, dir string) error {
 // uploadFile compresses and encrypts the contents of local, registers
 // remote with the backend and PUTs the ciphertext to the presigned URL it
 // returns. The reported size is that of the original file.
-func uploadFile(project, local, remote string) error {
+func uploadFile(local, remote string) error {
 	info, err := os.Stat(local)
 	if err != nil {
 		return failf("%v", err)
@@ -146,7 +142,7 @@ func uploadFile(project, local, remote string) error {
 		return err
 	}
 
-	raw, err := send("POST", apiPath("projects", project, "storage", "files"),
+	raw, err := send("POST", apiPath("storage", "files"),
 		map[string]any{"path": remote})
 	if err != nil {
 		return err
@@ -187,8 +183,8 @@ type fetchedFile struct {
 // file that was stored unencrypted (by other means) is returned as it is,
 // and reported as such. Shared by download and read, which differ only in
 // where the contents end up.
-func fetchFile(project, remote string) (fetchedFile, error) {
-	raw, err := send("GET", apiPath("projects", project, "storage", "files"), nil)
+func fetchFile(remote string) (fetchedFile, error) {
+	raw, err := send("GET", apiPath("storage", "files"), nil)
 	if err != nil {
 		return fetchedFile{}, err
 	}
@@ -207,7 +203,7 @@ func fetchFile(project, remote string) (fetchedFile, error) {
 		return fetchedFile{}, failf("no stored file at path %q; check `cysu storage list`", remote)
 	}
 
-	raw, err = send("GET", apiPath("projects", project, "storage", "files", file.ID), nil)
+	raw, err = send("GET", apiPath("storage", "files", file.ID), nil)
 	if err != nil {
 		return fetchedFile{}, err
 	}
@@ -240,8 +236,8 @@ func fetchFile(project, remote string) (fetchedFile, error) {
 // downloadFile fetches the stored file at remote and writes its contents to
 // output. The file is written next to its final location and renamed into
 // place, so a failed transfer never leaves a truncated file behind.
-func downloadFile(project, remote, output string) error {
-	file, err := fetchFile(project, remote)
+func downloadFile(remote, output string) error {
+	file, err := fetchFile(remote)
 	if err != nil {
 		return err
 	}
@@ -268,8 +264,8 @@ func downloadFile(project, remote, output string) error {
 // {"data": "<base64>"}, so a caller can use a file without writing it to
 // disk. The contents are base64-encoded because they may be binary, which
 // a JSON string cannot carry as it is.
-func readFile(project, remote string) error {
-	file, err := fetchFile(project, remote)
+func readFile(remote string) error {
+	file, err := fetchFile(remote)
 	if err != nil {
 		return err
 	}

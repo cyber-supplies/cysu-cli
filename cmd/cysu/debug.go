@@ -4,9 +4,9 @@ package main
 // setup when something is not working.
 //
 // `debug info` is offline and answers "what is this binary configured to
-// do": version, platform, backend URL, whether a token is present, where the
+// do": version, platform, gateway URL, whether a token is present, where the
 // key and config files are and whether they are usable. `debug check` adds a
-// request to the backend, so it also answers "does any of it work".
+// request to the gateway, so it also answers "does any of it work".
 //
 // Both are built to run when nothing else does. Neither needs a token or a
 // key, and neither creates one: the key file is inspected directly rather
@@ -63,7 +63,7 @@ type debugReport struct {
 	Token    tokenStatus    `json:"token"`
 	Key      keyStatus      `json:"key"`
 	Config   configStatus   `json:"config"`
-	Backend  *backendStatus `json:"backend,omitempty"`
+	Gateway  *gatewayStatus `json:"gateway,omitempty"`
 	Problems []string       `json:"problems"`
 }
 
@@ -83,16 +83,15 @@ type keyStatus struct {
 	Detail      string `json:"detail,omitempty"`
 }
 
-// A configStatus describes the settings file and the project it selects.
+// A configStatus describes the settings file.
 type configStatus struct {
-	Path    string  `json:"path"`
-	Exists  bool    `json:"exists"`
-	Project *string `json:"project"`
-	Detail  string  `json:"detail,omitempty"`
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
+	Detail string `json:"detail,omitempty"`
 }
 
-// A backendStatus is the outcome of the request `debug check` makes.
-type backendStatus struct {
+// A gatewayStatus is the outcome of the request `debug check` makes.
+type gatewayStatus struct {
 	Reachable  bool            `json:"reachable"`
 	Authorised bool            `json:"authorised"`
 	DurationMS int64           `json:"duration_ms"`
@@ -100,7 +99,7 @@ type backendStatus struct {
 }
 
 // buildReport gathers everything the CLI can say about itself. With probe set
-// it also asks the backend, which needs a token; without one that step is
+// it also asks the gateway, which needs a token; without one that step is
 // skipped rather than failing, since a missing token is one of the things
 // worth reporting.
 func buildReport(v flagValues, probe bool) debugReport {
@@ -128,14 +127,14 @@ func buildReport(v flagValues, probe bool) debugReport {
 
 	if probe && report.Token.Present {
 		loadAPIToken(v) // cannot fail: a token was found above
-		backend := probeBackend()
-		report.Backend = &backend
+		gateway := probeGateway()
+		report.Gateway = &gateway
 
 		switch {
-		case !backend.Reachable:
-			report.Problems = append(report.Problems, "backend unreachable at "+report.APIURL)
-		case !backend.Authorised:
-			report.Problems = append(report.Problems, "backend refused the token")
+		case !gateway.Reachable:
+			report.Problems = append(report.Problems, "gateway unreachable at "+report.APIURL)
+		case !gateway.Authorised:
+			report.Problems = append(report.Problems, "gateway refused the token")
 		}
 	}
 
@@ -195,7 +194,7 @@ func inspectKey() keyStatus {
 	return status
 }
 
-// inspectConfig describes the settings file and the project it selects.
+// inspectConfig describes the settings file.
 func inspectConfig() configStatus {
 	path, err := configPath()
 	if err != nil {
@@ -207,25 +206,22 @@ func inspectConfig() configStatus {
 		status.Exists = true
 	}
 
-	project, err := currentProject()
+	_, err = readConfig()
 	if err != nil {
 		status.Detail = err.Error()
 		return status
 	}
-	if project != "" {
-		status.Project = &project
-	}
 	return status
 }
 
-// probeBackend asks the backend for the project list, the cheapest route that
-// needs a token, and reports what came back. A reply the backend refused
+// probeGateway asks the gateway for the user's storage list, a read-only route
+// that needs a token, and reports what came back. A reply the gateway refused
 // still proves it is reachable, which is the distinction worth drawing when
 // something is wrong.
-func probeBackend() backendStatus {
+func probeGateway() gatewayStatus {
 	start := time.Now()
-	_, err := send("GET", apiPath("projects"), nil)
-	status := backendStatus{DurationMS: time.Since(start).Milliseconds()}
+	_, err := send("GET", apiPath("storage", "files"), nil)
+	status := gatewayStatus{DurationMS: time.Since(start).Milliseconds()}
 
 	if err == nil {
 		status.Reachable = true
@@ -233,7 +229,7 @@ func probeBackend() backendStatus {
 		return status
 	}
 
-	// A cliError carrying a body is one the backend itself sent, so the host
+	// A cliError carrying a body is one the gateway sent, so the host
 	// answered and it is the request it turned down.
 	var e cliError
 	if errors.As(err, &e) && len(e.raw) > 0 {

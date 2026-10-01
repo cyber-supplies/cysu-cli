@@ -2,7 +2,7 @@ package main
 
 // cli.go is the small command framework behind `cysu <resource> <action>`.
 //
-// Each resource (projects, findings, ...) is a table of commands. A command
+// Each resource is a table of commands. A command
 // declares the flags it accepts and a run function that receives the parsed
 // values. Flag parsing, required-flag checks, help text and error messages are
 // all derived from that table, so they cannot drift apart from each other.
@@ -24,14 +24,14 @@ import (
 // A flagSpec declares one flag a command accepts.
 type flagSpec struct {
 	name        string // without the leading dashes
-	placeholder string // value name shown in help, e.g. "id" in --project <id>
+	placeholder string // value name shown in help, e.g. "path" in --path <path>
 	usage       string
 	required    bool // an empty value is a usage error
 	boolean     bool // a switch that takes no value, e.g. --force
 	multi       bool // may be repeated; every occurrence is kept, e.g. --scope
 
 	// fallback supplies the value when the flag is omitted, e.g. the selected
-	// project for --project. It returns an error when there is no default
+	// saved value for an optional flag. It returns an error when there is no default
 	// either; a usage-class cliError gets the command's usage line appended,
 	// so it reads like any other usage error.
 	fallback func() (string, error)
@@ -61,14 +61,14 @@ type multiValue []string
 func (m *multiValue) String() string     { return strings.Join(*m, ", ") }
 func (m *multiValue) Set(s string) error { *m = append(*m, s); return nil }
 
-// A command is one action of a resource, e.g. `cysu findings create`.
+// A command is one action of a resource, e.g. `cysu storage list`.
 type command struct {
 	name  string
 	flags []flagSpec
 	run   func(v flagValues) error
 
 	// local marks a command of an API resource that never talks to the
-	// backend (e.g. `projects current`): it needs neither a token nor the key.
+	// gateway (for example, local key management): it needs neither a token nor the key.
 	local bool
 }
 
@@ -147,7 +147,7 @@ func (r resource) lookup(name string) (command, bool) {
 }
 
 // usageLine renders the resource's invocation with every action it offers,
-// e.g. "cysu projects {list|get|create|delete} [flags]".
+// e.g. "cysu storage {list|upload|download|read} [flags]".
 func (r resource) usageLine() string {
 	names := make([]string, len(r.commands))
 	for i, c := range r.commands {
@@ -157,7 +157,7 @@ func (r resource) usageLine() string {
 }
 
 // usageLine renders the command's full invocation within r, e.g.
-// "cysu findings get --project <id> --finding <id> [--token <token>]".
+// "cysu storage list [--dir <dir>] [--token <token>]".
 func (c command) usageLine(r resource) string {
 	return strings.TrimRight("cysu "+r.name+" "+c.name+" "+flagSynopsis(r.flags(c)), " ")
 }
@@ -254,7 +254,7 @@ func withUsage(err error, usage string) error {
 // Help text
 // ---------------------------------------------------------------------------
 
-// label renders the flag as it is typed, e.g. "--project <id>" or "--force".
+// label renders the flag as it is typed, e.g. "--path <path>" or "--force".
 func (f flagSpec) label() string {
 	if f.boolean {
 		return "--" + f.name
@@ -278,7 +278,7 @@ func (f flagSpec) synopsis() string {
 }
 
 // flagSynopsis renders flags for a usage line, e.g.
-// "--project <id> --title <title> [--severity <sev>]".
+// "--path <path> [--dir <dir>]".
 func flagSynopsis(flags []flagSpec) string {
 	parts := make([]string, len(flags))
 

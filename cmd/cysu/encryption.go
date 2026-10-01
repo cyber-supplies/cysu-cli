@@ -22,10 +22,9 @@ package main
 // ~/.ssh/id_ed25519: the CLI refuses to use a key file that is readable by
 // group or others.
 //
-// What is encrypted: finding titles and descriptions (findings.go) and the
-// contents of stored files, zstd-compressed first (storage.go). The backend only
-// ever sees ciphertext for those; everything else (ids, severity, paths)
-// stays in the clear so the backend can list and look things up.
+// The contents of stored files are zstd-compressed and encrypted before upload
+// (storage.go). The storage service only sees ciphertext; paths remain in the
+// clear so it can list files.
 //
 // This file holds the cipher itself. keyfile.go derives, stores and loads the
 // master key; key.go is the `cysu key` command that manages it.

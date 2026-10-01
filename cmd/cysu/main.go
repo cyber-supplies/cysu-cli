@@ -1,11 +1,11 @@
-// cysu is the command-line client for the CyberSupplies backend.
+// cysu is the command-line client for the Cyber Supplies API gateway.
 //
 // Usage:
 //
 //	cysu <resource> <action> [flags]
 //
-// Each resource is a command table in its own file (projects.go, findings.go,
-// ...). cli.go holds the framework that parses flags and runs those tables;
+// Each resource is a command table in its own file. cli.go holds the framework
+// that parses flags and runs those tables;
 // client.go holds the HTTP layer they call into.
 package main
 
@@ -19,10 +19,6 @@ import (
 
 // resources lists every command group, in the order they appear in the help.
 var resources = []resource{
-	projectsResource,
-	findingsResource,
-	accountsResource,
-	endpointsResource,
 	javascriptResource,
 	storageResource,
 	proxyResource,
@@ -68,8 +64,7 @@ func findResource(name string) (resource, bool) {
 	return resource{}, false
 }
 
-// rootUsageLine renders the top-level invocation with every resource, e.g.
-// "cysu {projects|findings|accounts|endpoints|key} <action> [flags]".
+// rootUsageLine renders the top-level invocation with every resource.
 func rootUsageLine() string {
 	names := make([]string, len(resources))
 	for i, r := range resources {
