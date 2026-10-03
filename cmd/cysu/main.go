@@ -21,6 +21,8 @@ import (
 var resources = []resource{
 	javascriptResource,
 	storageResource,
+	skillsResource,
+	profileResource,
 	proxyResource,
 	oobResource,
 	keyResource,

@@ -30,12 +30,20 @@ To create a release:
 
 ```
 git checkout main && git pull
-git tag -a v0.1.{VERSION_NUMBER} -m "v0.1.{VERSION_NUMBER}"
+git tag -a v0.3.{VERSION_NUMBER} -m "v0.3.{VERSION_NUMBER}"
 git push origin v0.1.{VERSION_NUMBER}
 gh run watch --exit-status
 ```
 
 The tag is the version. The workflow builds and publishes `@cyber-supplies/cysu` to GitHub Packages, and stamps the tag into the binary so that `cysu help` reports it. A build from source reports `dev`.
+
+## Environment Variables
+
+`CYSU_TOKEN` - Supplies the API token.
+
+`CYSU_PROVIDER` - The default provider for profile installation: `AGENTS`, `CLAUDE`, or `CODEX`.
+
+`CYSU_PROFILE` - The profile to use globally.
 
 ## Usage
 
@@ -44,31 +52,6 @@ cysu - CyberSupplies CLI
 
 Usage:
   cysu <resource> <action> [flags]
-
-Projects:
-  cysu projects list
-  cysu projects get      [--project <id>]
-  cysu projects create   --name <name> --scope <glob> [--scope <glob>...]
-  cysu projects delete   --project <id>
-  cysu projects select   --project <id>
-  cysu projects current
-
-Findings:
-  cysu findings list    [--project <id>]
-  cysu findings get     [--project <id>] --finding <id>
-  cysu findings create  [--project <id>] --title <title> --desc <description> [--severity <sev>]
-  cysu findings delete  [--project <id>] --finding <id>
-
-Accounts:
-  cysu accounts list      [--project <id>]
-  cysu accounts get       [--project <id>] --account <id>
-  cysu accounts create    [--project <id>] --username <user> --password <pass> [--location <url>]
-  cysu accounts delete    [--project <id>] --account <id>
-  cysu accounts get-auth  [--project <id>] --account <id>
-
-Endpoints:
-  cysu endpoints list    [--project <id>]
-  cysu endpoints search  [--project <id>] --query <query>
 
 Storage:
   cysu storage list      [--project <id>] [--dir <dir>]
@@ -83,10 +66,28 @@ JavaScript:
   cysu javascript clear
 
 Skills:
-  cysu skills list
-  cysu skills create  --name <name> --description <desc> --content <content>
-  cysu skills modify  --skill <id> [--name <name>] [--description <desc>] [--content <content>]
+  cysu skills list [--profile <profile>]
+  cysu skills create --file <file> [--profile <profile>]
+  cysu skills replace --skill <id> --file <file> [--profile <profile>]
   cysu skills remove  --skill <id>
+  cysu skills install [--provider <provider>]
+  cysu skills uninstall [--provider <provider>]
+
+Agents:
+  cysu agents list
+  cysu agents create --file <file> [--profile <profile>]
+  cysu agents replace --agent <id> [--file <file] [--profile <profile>]
+  cysu agents remove  --agent <id>
+
+MCP:
+  cysu mcp list
+  cysu mcp create --type <type>
+  cysu mcp modify --type <type>
+  cysu mcp remove  --mcp <id>
+
+Profiles:
+  cysu profile install [--profile <profile>] [--provider <provider>] --scope <global|project>
+  cysu profile uninstall [--provider <provider>] --scope <global|project>
 
 Out-of-Bounds:
   cysu oob create

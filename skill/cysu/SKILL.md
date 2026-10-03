@@ -21,157 +21,14 @@ A modal response has been provided alongside each command. Use this to parse the
 
 ## Authentication
 
-Every command except `key` needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
-
-## Projects
-
-Resources in Cyber Supplies often belong to a project. Projects are created by the user. To view available projects:
-
-```
-cysu projects list
-
-{
-  "success": true,
-  "projects": [
-    {
-      "id": "example-app-a68fn",
-      "name": "Example App",
-      "scope": [
-        "*example*",
-        "*test*"
-      ]
-    }
-  ]
-}
-```
-
-**Important** - Select the project that the user has instructed you to, or the one that best fits your goal. To select a project:
-
-```
-cysu projects select --project <projectID>
-
-{
-  "project": "<projectID>"
-}
-```
-
-Alternatively, a project can also be specified with the CLI flag `--project <projectID>` on each request. If a flag is specified, it will take priority over the currently selected project.
-
-## Accounts
-
-**CRITICAL** - Requires project selection OR specified flag
-
-The user may provision you accounts for use inside the projects. To see available accounts:
-
-```
-cysu accounts list
-
-[
-  {
-    "id": "acc_01m1r85wgef0x88sa4p8qrkjtb",
-    "username": "pentester1",
-    "password": "12345",
-    "location": "https://example.com/login"
-  }
-]
-```
-
-**Important** - This returns live credentials. It is highly recommended to parse the JSON and store the credentials inside a file, rather than reading it into context.
-
-## Endpoints
-
-**CRITICALL** - NOT IMPLEMENTED
-
-**CRITICAL** - Requires project selection OR specified flag
-
-To view the collected endpoints for a target:
-
-```
-cysu endpoints list
-
-{
-  "endpoints": [
-    {
-      "url": "https://www.example.com/search",
-      "method": "POST",
-      "parameters": [
-        {
-          "name": "q",
-          "format": "STRING",
-          "optional": false
-        },
-        {
-          "name": "limit",
-          "format": "INTEGER",
-          "optional": true
-        }
-      ]
-    },
-    {
-      "url": "https://www.example.com/login",
-      "method": "POST",
-      "parameters": [
-        {
-          "name": "username",
-          "format": "STRING",
-          "optional": false
-        },
-        {
-          "name": "password",
-          "format": "STRING",
-          "optional": false
-        },
-        {
-          "name": "remember",
-          "format": "BOOLEAN",
-          "optional": true
-        }
-      ]
-    }
-  ]
-}
-```
-
-To search for endpoints using regex:
-
-```
-cysu endpoints search --query <regex>
-
-{
-  "endpoints": [
-    {
-      "url": "https://www.example.com/login",
-      "method": "POST",
-      "parameters": [
-        {
-          "name": "username",
-          "format": "STRING",
-          "optional": false
-        },
-        {
-          "name": "password",
-          "format": "STRING",
-          "optional": false
-        },
-        {
-          "name": "remember",
-          "format": "BOOLEAN",
-          "optional": true
-        }
-      ]
-    }
-  ]
-}
-```
+Every command needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
 
 ## Storage
-
-**CRITICAL** - Requires project selection OR specified flag
 
 Storage is used for holding files in a persistent location, where it can be accessed across multiple devices/sessions. To list objects in the storage:
 
 ```
-cysu storage list --dir <dir>
+cysu storage list [--dir <dir>]
 ```
 
 To upload and download files from the storage:
@@ -179,7 +36,23 @@ To upload and download files from the storage:
 ```
 cysu storage upload --file <localFile> --path <storagePath>
 
+{
+  "success": true,
+  "id": "dG1wL3Rlc3Q",
+  "path": "<storagePath>",
+  "size": 6
+}
+
 cysu storage download --path <storagePath> --output <localFile>
+
+{
+  "success": true,
+  "id": "dG1wL3Rlc3Q",
+  "path": "<storagePath>",
+  "output": "<localFile>",
+  "size": 6,
+  "encrypted": true
+}
 ```
 
 To read a stored file without writing it to disk:
@@ -194,43 +67,11 @@ cysu storage read --path <storagePath>
 
 **Important** - The contents are base64 encoded, because a stored file may be binary. To print the raw contents, decode it first.
 
-## Findings
-
-**CRITICAL** - Requires project selection OR specified flag
-
-Used for writing finished vulnerability reports to the user.
-
-To create a new finding:
-
-```
-cysu findings create --title <title> --desc <description> --severity [LOW|MEDIUM|HIGH|CRITICAL]
-
-{
-  "id": "fnd_01m3f5vrxgeembs0ewyv5np6v0",
-  "severity": "LOW",
-  "title": "<title>",
-  "description": "<description>"
-}
-```
-
 ## JavaScript
 
 Used for collecting and downloading the JavaScript from the target.
 
-First, submit one or more URLs. The best URLs to use are main JavaScript files, which are often held on a separate CDN domain:
-
-```
-cysu javascript add  --url <url> [--url <url>...]
-
-{
-  "success": true,
-  "urls": ["https://cdn.example.com/assets/index.js"]
-}
-```
-
-**Important** - Submitting queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map.
-
-To check what has been collected so far, optionally filtered by domain, without downloading it:
+First, check what has been collected so far, optionally filtered by domain, without downloading it:
 
 ```
 cysu javascript list  [--domain <target-domain>]
@@ -245,9 +86,20 @@ cysu javascript list  [--domain <target-domain>]
 ]
 ```
 
-Files are grouped by the host that served them. Scripts loaded from another host (e.g. a CDN) are listed and downloaded under that domain.
+If you are missing key files, submit one or more URLs for processing. The best URLs to use are main JavaScript files, which are often held on a separate CDN domain:
 
-Once collected, the JavaScript files for a domain can be downloaded with the following:
+```
+cysu javascript add  --url <url> [--url <url>...]
+
+{
+  "success": true,
+  "urls": ["https://cdn.example.com/assets/index.js"]
+}
+```
+
+**Important** - Submitting queues the URL. The service then fetches, beautifies and analyses each file, and recovers original sources from any source map. Files are grouped by the host that served them. Scripts loaded from another host (e.g. a CDN) are listed and downloaded under that domain.
+
+The JavaScript files for a domain can then be downloaded with the following:
 
 ```
 cysu javascript download  --domain <target-domain>
@@ -267,47 +119,41 @@ cysu javascript download  --domain <target-domain>
 The files will then automatically be stored in this directory structure:
 
 ```
-~/
-  cysu-js/
-    <target-domain>/
-      manifest.jsonl
-      path/
-        to/
-          file_1.js
-    <another-domain>/
-      path/
-        to/
-          file_2.js
-    sources/          originals recovered from source maps
-    historical/       earlier versions of a file (if requested)
+~/cysu-js/
+  <domain>/           # One directory per domain
+    manifest.jsonl
+    <url_path>/
+      <file_name>.js
+  sources/            # Originals recovered from source maps
+  historical/         # Earlier versions of a file (if requested)
 ```
 
 **CRITICAL** - The JavaScript files returned are ALWAYS beautified and decompressed. Do NOT attempt to do this yourself.
 
-Each domain directory holds a `manifest.jsonl`, which indexes the collection as JSON Lines. Use it to find matches rather than grepping the tree. An `export` header first, then a `file` line per script and a `source` line per original recovered from a source map, then every `match`:
+Each domain directory holds a `manifest.jsonl`, which indexes the collection as JSON Lines. Use it to find matches rather than grepping the tree. This should be used when looking to extract API paths, dangerous HTML assignments, URLs, and many other things from the JS.
 
 ```
-{"type": "export", "domain": "example.com", "files": 31, "matches": 412}
-{"type": "file",   "path": "example.com/static/app.js", "analysis": "complete"}
-{"type": "source", "path": "sources/…/src/api.ts", "bundle": "example.com/static/app.js"}
-{"type": "match",  "path": "example.com/static/app.js", "kind": "url", "value": "/api/v2/users", "line": 412}
+{"type":"match","path":"example.com/static/app.js","kind":"url","value":"https://example.com/help","line":47369,"column":19,"endLine":47369,"endColumn":169}
+{"type":"match","path":"example.com/static/app.js","kind":"url_search_params","value":"new URLSearchParams(n)","line":70498,"column":23,"endLine":70498,"endColumn":45}
+{"type":"match","path":"example.com/static/app.js","kind":"post_message","value":"k.postMessage(null)","line":1304,"column":30,"endLine":1304,"endColumn":49}
+{"type":"match","path":"example.com/static/app.js","kind":"query_param","value":"a","line":32683,"column":17,"endLine":32683,"endColumn":41}
 ```
 
-Paths are relative to `~/cysu-js`, so a match line opens the right file at the right line.
-
-To remove all JavaScript files that are currently downloaded:
+To extract all the unique keys:
 
 ```
-cysu javascript clear
+jq -r 'select(.type == "match") | .kind' ~/cysu-js/example.com/manifest.jsonl | sort -u 
+```
 
-{
-  "success": true
-}
+To pull the unique values for a specific kind of match (url_search_params in the example):
+
+```
+jq -r 'select(.type == "match" and .kind == "url_search_params") | .value' ~/cysu-js/example.com/manifest.jsonl
 ```
 
 ## Out-of-Bounds
 
-Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled. Currently does not support hosting payloads.
+Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled.
 
 To create an out-of-bounds URL:
 
