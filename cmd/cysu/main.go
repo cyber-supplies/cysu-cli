@@ -25,6 +25,7 @@ var resources = []resource{
 	profileResource,
 	proxyResource,
 	oobResource,
+	emailResource,
 	keyResource,
 	debugResource,
 }

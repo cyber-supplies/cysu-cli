@@ -85,6 +85,11 @@ MCP:
   cysu mcp modify --type <type>
   cysu mcp remove  --mcp <id>
 
+Email:
+  cysu email accounts
+  cysu email list --account <accountsId> 
+  cysu email read --account <accountId> --email <emailId>
+
 Profiles:
   cysu profile install [--profile <profile>] [--provider <provider>] --scope <global|project>
   cysu profile uninstall [--provider <provider>] --scope <global|project>
