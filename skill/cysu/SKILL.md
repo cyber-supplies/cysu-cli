@@ -151,6 +151,55 @@ To pull the unique values for a specific kind of match (url_search_params in the
 jq -r 'select(.type == "match" and .kind == "url_search_params") | .value' ~/cysu-js/example.com/manifest.jsonl
 ```
 
+## Endpoints
+
+Endpoints are saved from a proxy as agents work on the application. To list all the currently captured endpoints on a domain:
+
+```
+cysu endpoints list --domain <domain>
+
+{
+  "id": "1",
+  "domain": "example.com",
+  "method": "GET",
+  "path": "/api/v2/me",
+  "observedPath": "/api/v2/me",
+  "seenCount": 1,
+  "firstSeenAt": "2026-09-29T11:12:16.839Z",
+  "lastSeenAt": "2026-09-29T11:12:16.839Z",
+  "request": {
+    "method": "GET",
+    "url": "https://example.com/api/v2/me",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "user": {
+        "id": 1,
+        "name": "test"
+      }
+    }
+  }
+}
+```
+
+**Important** - The endpoints list is not exhaustive. It lists endpoints that the proxy has previously seen, but doesn't guarantee full completion, or up-to-date information.
+
+To further filter by path and method:
+
+```
+cysu endpoints list --domain <domain> --path <path> --method <method>
+```
+
+To list ALL captured endpoints:
+
+```
+cysu endpoints list
+```
+
+**Important** - The parameters 'domain' and 'path' are regex strings, by default matching on strings containing the regex. I.e 'example', will match domains 'example.com' or 'example2.com'
+
 ## Out-of-Bounds
 
 Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled.
@@ -185,3 +234,72 @@ cysu oob pull-hits
 ```
 
 This returns the FULL history of every hit seen so far, and is safe to call repeatedly. Each call also fetches any new hits and adds them. An empty array `[]` means no hits have arrived yet.
+
+## Email
+
+Used for accessing information via email, e.g OTP links, password resets, or confirmations. Does not currently support sending emails.
+
+To see what accounts are accessible:
+
+```
+cysu email accounts
+
+[
+  {
+    "id": "example",
+    "email": "example
+  }
+]
+```
+
+To read the last 20 emails:
+
+```
+cysu email list --account <accountId>
+
+{
+  "account": "example",
+  "folder": "INBOX",
+  "total": 100,
+  "messages": [
+    {
+      "id": "INBOX:1",
+      "from": "test@gmail.com",
+      "subject": "Testing",
+      "date": "2026-10-06T07:07:51Z",
+      "flags": [],
+      "unread": true,
+      "size": 78763,
+      "preview": "This is a test email ...",
+      "has_attachments": false
+    }
+  ]
+}
+```
+
+To read the full body of a specific email:
+
+```
+cysu email read --account <accountId> --email <emailId>
+
+{
+  "id": "INBOX:1",
+  "from": "test@gmail.com",
+  "subject": "Testing",
+  "date": "2026-10-02T18:25:20Z",
+  "flags": [
+    "\\Seen"
+  ],
+  "unread": false,
+  "size": 67860,
+  "preview": "",
+  "has_attachments": false,
+  "account": "example",
+  "to": "example@gmail.com",
+  "cc": "",
+  "reply_to": "",
+  "message_id": "",
+  "body": "This is a test email and here is it's full body",
+  "attachments": []
+}
+```

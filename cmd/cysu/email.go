@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,13 +53,49 @@ func emailAccountsPath() (string, error) {
 	return filepath.Join(home, ".config", "cysu", "accounts.json"), nil
 }
 
-// loadEmailAccounts validates credentials without ever printing their values.
+// createEmailAccounts initializes an empty private config without overwriting an
+// existing file, including one created by another command in the meantime.
+func createEmailAccounts(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("creating email accounts directory: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("creating email accounts %s: %w", path, err)
+	}
+	_, writeErr := file.WriteString("{}\n")
+	closeErr := file.Close()
+	if writeErr != nil {
+		return fmt.Errorf("initializing email accounts %s: %w", path, writeErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("closing email accounts %s: %w", path, closeErr)
+	}
+	return nil
+}
+
+// loadEmailAccounts creates missing config and validates credentials without
+// ever printing their values.
 func loadEmailAccounts() (emailAccounts, error) {
 	path, err := emailAccountsPath()
 	if err != nil {
 		return nil, err
 	}
+	return loadEmailAccountsFile(path)
+}
+
+// loadEmailAccountsFile initializes and reads the accounts at path.
+func loadEmailAccountsFile(path string) (emailAccounts, error) {
 	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := createEmailAccounts(path); err != nil {
+			return nil, err
+		}
+		raw, err = os.ReadFile(path)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("reading email accounts %s: %w", path, err)
 	}
@@ -118,13 +155,21 @@ func (a emailAccounts) lookup(name string) (string, emailAccount, error) {
 	return "", emailAccount{}, fmt.Errorf("unknown email account %q; known accounts: %s", name, strings.Join(a.names(), ", "))
 }
 
-// listEmailAccounts prints only IDs; it never connects to IMAP.
+// listEmailAccounts prints account IDs and email usernames without connecting to IMAP.
 func listEmailAccounts(_ flagValues) error {
 	accounts, err := loadEmailAccounts()
 	if err != nil {
 		return err
 	}
-	return printJSON(accounts.names())
+	type accountSummary struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
+	}
+	result := make([]accountSummary, 0, len(accounts))
+	for _, id := range accounts.names() {
+		result = append(result, accountSummary{ID: id, Email: accounts[id].Username})
+	}
+	return printJSON(result)
 }
 
 // openEmailAccount loads the selected credentials and opens a TLS IMAP session.

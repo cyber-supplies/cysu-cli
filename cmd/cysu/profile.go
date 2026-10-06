@@ -9,8 +9,17 @@ import (
 )
 
 var profileNameFlag = flagSpec{
-	name: "profile", placeholder: "profile", usage: "profile to install (default: default)",
-	fallback: func() (string, error) { return "default", nil },
+	name: "profile", placeholder: "profile", usage: "profile to install (overrides CYSU_PROFILE; default: default)",
+	fallback: profileFromEnvironment,
+}
+
+// profileFromEnvironment supplies the default profile for installation in either scope.
+func profileFromEnvironment() (string, error) {
+	profile := strings.TrimSpace(os.Getenv("CYSU_PROFILE"))
+	if profile == "" {
+		profile = "default"
+	}
+	return profile, nil
 }
 
 var profileScopeFlag = flagSpec{

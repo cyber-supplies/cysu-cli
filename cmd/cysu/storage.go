@@ -26,6 +26,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -65,8 +66,8 @@ var storageResource = resource{
 		{
 			name: "download",
 			flags: []flagSpec{
-				{name: "path", placeholder: "path", usage: "path of the file in storage", required: true},
-				{name: "output", placeholder: "local", usage: "local file to write", required: true},
+				{name: "path", placeholder: "path", usage: "file or directory prefix in storage (use / for all files)", required: true},
+				{name: "output", placeholder: "local", usage: "local file or destination directory", required: true},
 			},
 			run: func(v flagValues) error {
 				return downloadFile(v["path"], v["output"])
@@ -203,7 +204,13 @@ func fetchFile(remote string) (fetchedFile, error) {
 		return fetchedFile{}, failf("no stored file at path %q; check `cysu storage list`", remote)
 	}
 
-	raw, err = send("GET", apiPath("storage", "files", file.ID), nil)
+	return fetchStoredFile(*file)
+}
+
+// fetchStoredFile downloads a known listing entry without listing storage again.
+func fetchStoredFile(file storedFile) (fetchedFile, error) {
+	remote := file.Path
+	raw, err := send("GET", apiPath("storage", "files", file.ID), nil)
 	if err != nil {
 		return fetchedFile{}, err
 	}
@@ -230,14 +237,31 @@ func fetchFile(remote string) (fetchedFile, error) {
 			return fetchedFile{}, fmt.Errorf("stored file %s: decompressing: %w", remote, err)
 		}
 	}
-	return fetchedFile{storedFile: *file, contents: plaintext, encrypted: encrypted}, nil
+	return fetchedFile{storedFile: file, contents: plaintext, encrypted: encrypted}, nil
 }
 
-// downloadFile fetches the stored file at remote and writes its contents to
-// output. The file is written next to its final location and renamed into
-// place, so a failed transfer never leaves a truncated file behind.
+// downloadFile prefers an exact file match; otherwise remote is a directory
+// prefix whose descendants are downloaded into output, preserving relative paths.
 func downloadFile(remote, output string) error {
-	file, err := fetchFile(remote)
+	raw, err := send("GET", apiPath("storage", "files"), nil)
+	if err != nil {
+		return err
+	}
+	files, err := decodeFileList(raw)
+	if err != nil {
+		return err
+	}
+	var match *storedFile
+	for i := range files {
+		if samePath(files[i].Path, remote) {
+			match = &files[i]
+			break
+		}
+	}
+	if match == nil {
+		return downloadDirectory(remote, output, files)
+	}
+	file, err := fetchStoredFile(*match)
 	if err != nil {
 		return err
 	}
@@ -258,6 +282,110 @@ func downloadFile(remote, output string) error {
 		Size      int64  `json:"size"`
 		Encrypted bool   `json:"encrypted"`
 	}{true, file.ID, file.Path, abs, size, file.encrypted})
+}
+
+// downloadDirectory downloads descendants of remote into output. Each file is
+// installed atomically; completed files remain if a subsequent download fails.
+func downloadDirectory(remote, output string, files []storedFile) error {
+	prefix := strings.Trim(strings.TrimSpace(remote), "/")
+	type destination struct {
+		file     storedFile
+		relative string
+	}
+	var matches []destination
+	seen := map[string]bool{}
+	for _, file := range files {
+		if !underDir(file.Path, prefix) {
+			continue
+		}
+		relative := cleanPath(file.Path)
+		if prefix != "" {
+			relative = strings.TrimPrefix(relative, prefix+"/")
+		}
+		// Validate slash-separated remote paths before converting to native paths.
+		if strings.ContainsAny(relative, "\\\x00:") {
+			return failf("unsafe storage path %q", file.Path)
+		}
+		for _, part := range strings.Split(relative, "/") {
+			if part == "" || part == "." || part == ".." {
+				return failf("unsafe storage path %q", file.Path)
+			}
+		}
+		local, err := filepath.Localize(relative)
+		if err != nil {
+			return failf("unsafe storage path %q: %v", file.Path, err)
+		}
+		if seen[local] {
+			return failf("duplicate storage destination %q", relative)
+		}
+		seen[local] = true
+		matches = append(matches, destination{file, local})
+	}
+	if len(matches) == 0 {
+		return failf("no stored files under path %q", remote)
+	}
+	for _, match := range matches {
+		for parent := filepath.Dir(match.relative); parent != "."; parent = filepath.Dir(parent) {
+			if seen[parent] {
+				return failf("storage file/directory conflict at %q", parent)
+			}
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool { return matches[i].relative < matches[j].relative })
+	abs, err := filepath.Abs(output)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return err
+	}
+	// Root confines filesystem operations even when existing directories are symlinks.
+	root, err := os.OpenRoot(abs)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	var size int64
+	for i, match := range matches {
+		file, err := fetchStoredFile(match.file)
+		if err == nil {
+			err = writeDownloadInRoot(root, match.relative, file.contents)
+		}
+		if err != nil {
+			return fmt.Errorf("downloading %s (%d of %d files completed): %w", match.file.Path, i, len(matches), err)
+		}
+		size += int64(len(file.contents))
+	}
+	return printJSON(struct {
+		Success bool   `json:"success"`
+		Path    string `json:"path"`
+		Output  string `json:"output"`
+		Files   int    `json:"files"`
+		Size    int64  `json:"size"`
+	}{true, remote, abs, len(matches), size})
+}
+
+// writeDownloadInRoot stages a private file beneath the destination root and
+// renames it into place. Exclusive random temporary names avoid clobbering files.
+func writeDownloadInRoot(root *os.Root, path string, data []byte) error {
+	parent := filepath.Dir(path)
+	if err := root.MkdirAll(parent, 0o755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(parent, ".cysu-download-"+rand.Text())
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer root.Remove(tmp)
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return root.Rename(tmp, path)
 }
 
 // readFile fetches the stored file at remote and prints its contents as

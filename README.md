@@ -65,6 +65,9 @@ JavaScript:
   cysu javascript download  --domain <domain>
   cysu javascript clear
 
+Endpoints
+  cysu endpoints list [--domain <domain] [--path <path>] [--method <method>]
+
 Skills:
   cysu skills list [--profile <profile>]
   cysu skills create --file <file> [--profile <profile>]
@@ -91,7 +94,7 @@ Email:
   cysu email read --account <accountId> --email <emailId>
 
 Profiles:
-  cysu profile install [--profile <profile>] [--provider <provider>] --scope <global|project>
+  cysu profile install --scope <global|project> [--profile <profile>] [--provider <provider>]
   cysu profile uninstall [--provider <provider>] --scope <global|project>
 
 Out-of-Bounds:

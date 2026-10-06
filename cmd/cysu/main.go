@@ -20,6 +20,7 @@ import (
 // resources lists every command group, in the order they appear in the help.
 var resources = []resource{
 	javascriptResource,
+	endpointsResource,
 	storageResource,
 	skillsResource,
 	promptsResource,
