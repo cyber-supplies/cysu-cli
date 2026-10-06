@@ -113,6 +113,7 @@ func profileLayoutFor(provider string) (profileLayout, error) {
 		// leave it empty while the profile owns the current shared skill path.
 		layout.Targets = append(layout.Targets, profileTarget{Path: filepath.Join(root, "skills"), Kind: "legacy-skills"})
 	}
+	layout.Targets = append(layout.Targets, profileTarget{Path: profilePromptPath(provider, root), Kind: "prompts"})
 	return validateProfileLayout(layout)
 }
 
@@ -181,7 +182,8 @@ func loadProfileState(layout profileLayout) (*profileState, error) {
 	if err != nil || state == nil {
 		return state, err
 	}
-	if len(state.Snapshots) != len(layout.Targets) {
+	legacy := state.Version < 3 && len(state.Snapshots) == len(layout.Targets)-1
+	if !legacy && len(state.Snapshots) != len(layout.Targets) {
 		return nil, failf("profile backup does not match the provider layout")
 	}
 	if state.Scope != layout.Scope || state.Project != layout.Project {
@@ -269,6 +271,15 @@ func readProfileState(provider, backup string) (*profileState, error) {
 	if provider == skillProviderCodex {
 		kinds = append(kinds, "legacy-skills")
 	}
+	var versionProbe struct {
+		Version int `json:"version"`
+	}
+	if json.Unmarshal(raw, &versionProbe) != nil {
+		return invalid()
+	}
+	if versionProbe.Version == 3 {
+		kinds = append(kinds, "prompts")
+	}
 	if !requiredStateFields(raw, "version", "provider", "profile", "snapshots") ||
 		json.Unmarshal(raw, &state) != nil || state.Provider != provider ||
 		strings.TrimSpace(state.Profile) == "" || state.Profile != strings.TrimSpace(state.Profile) || len(state.Snapshots) != len(kinds) {
@@ -302,7 +313,7 @@ func readProfileState(provider, backup string) (*profileState, error) {
 			return invalid()
 		}
 		if snapshot.Existed {
-			if snapshot.Kind == "config" {
+			if snapshot.Kind == "config" || snapshot.Kind == "prompts" {
 				if !payload.Mode().IsRegular() {
 					return invalid()
 				}
@@ -402,10 +413,7 @@ func backupProfile(layout profileLayout, profile string) (*profileState, error) 
 		return nil, err
 	}
 	defer os.RemoveAll(stage)
-	state := &profileState{Version: 1, Provider: layout.Provider, Profile: profile}
-	if layout.Scope == profileScopeProject {
-		state.Version, state.Scope, state.Project = 2, layout.Scope, layout.Project
-	}
+	state := &profileState{Version: 3, Provider: layout.Provider, Scope: layout.Scope, Project: layout.Project, Profile: profile}
 	for i, target := range layout.Targets {
 		info, err := os.Lstat(target.Path)
 		snapshot := profileSnapshot{profileTarget: target}
@@ -430,6 +438,65 @@ func backupProfile(layout profileLayout, profile string) (*profileState, error) 
 		return nil, err
 	}
 	return state, nil
+}
+
+// upgradeProfilePromptBackup adds the instruction file snapshot to a profile
+// installed by an earlier CLI release. The old manifest remains valid if the
+// upgrade fails before its final state write.
+func upgradeProfilePromptBackup(layout profileLayout, state *profileState) error {
+	if state.Version >= 3 {
+		return nil
+	}
+	if len(state.Snapshots) != len(layout.Targets)-1 {
+		return failf("profile backup does not match the provider layout")
+	}
+	target := layout.Targets[len(layout.Targets)-1]
+	if target.Kind != "prompts" {
+		return failf("profile layout has no prompt target")
+	}
+	if err := validateProfileTarget(target); err != nil {
+		return err
+	}
+	info, err := os.Lstat(target.Path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	snapshot := profileSnapshot{profileTarget: target}
+	if err == nil {
+		snapshot.Existed = true
+		snapshot.Mode = info.Mode().Perm()
+	}
+	backupPath := filepath.Join(layout.Backup, fmt.Sprint(len(state.Snapshots)))
+	if exists, err := pathExists(backupPath); err != nil {
+		return err
+	} else if exists {
+		return failf("unexpected prompt backup at %s; preserve it and repair the profile backup before retrying", backupPath)
+	}
+	if snapshot.Existed {
+		stage, err := os.MkdirTemp(layout.Backup, ".prompt-backup-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(stage)
+		if err := copyRegularFile(target.Path, filepath.Join(stage, "original"), snapshot.Mode); err != nil {
+			return err
+		}
+		if err := os.Rename(filepath.Join(stage, "original"), backupPath); err != nil {
+			return err
+		}
+	}
+	oldVersion := state.Version
+	state.Version = 3
+	state.Scope = layout.Scope
+	state.Project = layout.Project
+	state.Snapshots = append(state.Snapshots, snapshot)
+	if err := saveProfileState(layout, state); err != nil {
+		state.Version = oldVersion
+		state.Snapshots = state.Snapshots[:len(state.Snapshots)-1]
+		_ = os.Remove(backupPath)
+		return err
+	}
+	return nil
 }
 
 func copyProfilePath(source, target string) error {
@@ -515,7 +582,7 @@ func applyProfileWithRename(plan []profileChange, rename func(string, string) er
 			if err := copyProfilePath(change.Source, stage); err != nil {
 				return err
 			}
-		case change.Target.Kind == "config":
+		case change.Target.Kind == "config" || change.Target.Kind == "prompts":
 			if err := os.WriteFile(stage, change.Data, 0o600); err != nil {
 				return err
 			}
@@ -593,9 +660,9 @@ func validateProfileTarget(target profileTarget) error {
 	if err != nil {
 		return err
 	}
-	if target.Kind == "config" {
+	if target.Kind == "config" || target.Kind == "prompts" {
 		if !info.Mode().IsRegular() {
-			return failf("configuration %s must be a regular file", target.Path)
+			return failf("profile file %s must be a regular file", target.Path)
 		}
 		return nil
 	}
@@ -619,27 +686,45 @@ func prepareProfileRestore(layout profileLayout, state *profileState) ([]profile
 	for i, snapshot := range state.Snapshots {
 		change := profileChange{Target: snapshot.profileTarget, Remove: !snapshot.Existed}
 		source := filepath.Join(layout.Backup, fmt.Sprint(i))
-		if snapshot.Kind == "config" {
+		if snapshot.Kind == "config" || snapshot.Kind == "prompts" {
 			var original []byte
 			if snapshot.Existed {
 				var err error
-				original, err = readProfileConfig(source)
+				if snapshot.Kind == "prompts" {
+					original, _, err = readPromptInstruction(source)
+				} else {
+					original, err = readProfileConfig(source)
+				}
 				if err != nil {
 					return nil, err
 				}
-				if original == nil {
+				if original == nil && snapshot.Kind == "config" {
 					return nil, failf("missing configuration backup at %s", source)
 				}
 			}
-			current, err := readProfileConfig(snapshot.Path)
+			var current []byte
+			var err error
+			if snapshot.Kind == "prompts" {
+				current, _, err = readPromptInstruction(snapshot.Path)
+			} else {
+				current, err = readProfileConfig(snapshot.Path)
+			}
 			if err != nil {
 				return nil, err
 			}
-			change.Data, err = restoreProfileConfig(layout.Provider, current, original)
+			if snapshot.Kind == "prompts" {
+				change.Data, err = restorePromptSection(current, original, layout.Provider, layout.Scope)
+			} else {
+				change.Data, err = restoreProfileConfig(layout.Provider, current, original)
+			}
 			if err != nil {
 				return nil, err
 			}
-			change.Remove = !snapshot.Existed && len(bytes.TrimSpace(change.Data)) == 0
+			if snapshot.Kind == "prompts" {
+				change.Remove = !snapshot.Existed && len(change.Data) == 0
+			} else {
+				change.Remove = !snapshot.Existed && len(bytes.TrimSpace(change.Data)) == 0
+			}
 			change.Mode = snapshot.Mode
 		} else if snapshot.Existed {
 			if exists, err := pathExists(source); err != nil {

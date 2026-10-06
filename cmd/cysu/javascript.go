@@ -14,6 +14,8 @@ package main
 //	download  POST /javascript/export {domain}   -> {url, expiresAt}
 //	          then GET url, a ZIP of the collection
 //
+// clear removes downloaded collections from $HOME/cysu-js locally.
+//
 // The service keeps one collection per user per domain. The gateway identifies
 // the user from the token, so no command takes a user ID.
 //
@@ -74,6 +76,13 @@ var javascriptResource = resource{
 			},
 			run: func(v flagValues) error {
 				return downloadJavascript(v["domain"])
+			},
+		},
+		{
+			name:  "clear",
+			local: true,
+			run: func(flagValues) error {
+				return clearJavascript()
 			},
 		},
 	},
@@ -160,6 +169,38 @@ func downloadJavascript(domain string) error {
 		Files    int    `json:"files"`
 		Size     int64  `json:"size"`
 	}{true, domain, root, filepath.Join(root, manifestName), files, written})
+}
+
+// clearJavascript removes only the local directory used for downloaded
+// collections. The service keeps its copies and can export them again later.
+func clearJavascript() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return failf("finding the home directory: %v", err)
+	}
+	root := filepath.Join(home, collectionDir)
+	info, err := os.Lstat(root)
+	if os.IsNotExist(err) {
+		return printJSON(struct {
+			Success bool   `json:"success"`
+			Output  string `json:"output"`
+			Removed bool   `json:"removed"`
+		}{true, root, false})
+	}
+	if err != nil {
+		return failf("checking JavaScript collections at %s: %v", root, err)
+	}
+	if !info.IsDir() {
+		return failf("JavaScript collections path %s is not a directory", root)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		return failf("removing JavaScript collections at %s: %v", root, err)
+	}
+	return printJSON(struct {
+		Success bool   `json:"success"`
+		Output  string `json:"output"`
+		Removed bool   `json:"removed"`
+	}{true, root, true})
 }
 
 // ---------------------------------------------------------------------------

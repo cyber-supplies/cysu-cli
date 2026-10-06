@@ -73,6 +73,21 @@ func prepareProfile(layout profileLayout, bundle profileBundle) ([]profileChange
 			if err != nil {
 				return nil, err
 			}
+		case "prompts":
+			raw, mode, err := readPromptInstruction(target.Path)
+			if err != nil {
+				return nil, err
+			}
+			change.Data, err = mergePromptSection(raw, layout.Provider, layout.Scope, bundle.Prompts)
+			if err != nil {
+				return nil, err
+			}
+			change.Mode = mode
+			exists, err := pathExists(target.Path)
+			if err != nil {
+				return nil, err
+			}
+			change.Remove = !exists && len(change.Data) == 0
 		case "legacy-skills":
 			// Keep legacy Codex skills in the selected scope inactive until uninstall.
 		default:

@@ -51,9 +51,10 @@ type storedMCP struct {
 }
 
 type profileBundle struct {
-	Skills []storedSkill
-	Agents []storedAgent
-	MCP    []storedMCP
+	Skills  []storedSkill
+	Agents  []storedAgent
+	MCP     []storedMCP
+	Prompts []storedPrompt
 }
 
 // Fetch every resource through the profile-filtered API before changing local
@@ -73,8 +74,13 @@ func fetchProfile(profile string) (profileBundle, error) {
 			return bundle, failf("unexpected %s response: expected a JSON array", resource.name)
 		}
 	}
-	if len(bundle.Skills)+len(bundle.Agents)+len(bundle.MCP) == 0 {
-		return bundle, failf("profile %q contains no skills, agents, or MCP servers", profile)
+	var err error
+	bundle.Prompts, err = fetchPrompts(profile)
+	if err != nil {
+		return bundle, err
+	}
+	if len(bundle.Skills)+len(bundle.Agents)+len(bundle.MCP)+len(bundle.Prompts) == 0 {
+		return bundle, failf("profile %q contains no skills, agents, MCP servers, or prompts", profile)
 	}
 	for _, skill := range bundle.Skills {
 		if err := checkProfileEntry(skill.ID, skill.Profile, profile); err != nil {
@@ -146,6 +152,10 @@ func installProfile(profile, providerValue, scopeValue string) error {
 		if err != nil {
 			return err
 		}
+	} else if state.Version < 3 {
+		if err := upgradeProfilePromptBackup(layout, state); err != nil {
+			return err
+		}
 	}
 	// applyProfile stages every target and rolls all changes back on an error.
 	// The durable backup remains available after process termination as well.
@@ -159,7 +169,7 @@ func installProfile(profile, providerValue, scopeValue string) error {
 	return printJSON(map[string]any{
 		"success": true, "provider": provider, "profile": profile, "backup": layout.Backup,
 		"scope": layout.Scope, "project_directory": layout.Project,
-		"skills": len(bundle.Skills), "agents": len(bundle.Agents), "mcp": len(bundle.MCP),
+		"skills": len(bundle.Skills), "agents": len(bundle.Agents), "mcp": len(bundle.MCP), "prompts": len(bundle.Prompts),
 		"skills_directory": layout.Targets[0].Path, "restart_required": true,
 	})
 }

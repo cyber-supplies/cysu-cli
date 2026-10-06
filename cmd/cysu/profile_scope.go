@@ -72,6 +72,7 @@ func projectProfileTargets(provider, project string) []profileTarget {
 	if provider == skillProviderCodex {
 		targets = append(targets, profileTarget{Path: filepath.Join(root, "skills"), Kind: "legacy-skills"})
 	}
+	targets = append(targets, profileTarget{Path: profilePromptPath(provider, project), Kind: "prompts"})
 	return targets
 }
 
@@ -88,8 +89,8 @@ func projectProfileBackupDirectory(provider, project string) (string, error) {
 	return filepath.Join(filepath.Dir(global), "projects", hex.EncodeToString(hash[:]), strings.ToLower(provider)), nil
 }
 
-// Version 1 global backups remain readable. Project backups use version 2 and
-// bind both their registry key and targets to the saved canonical project root.
+// Version 1 global and version 2 project backups remain readable. Version 3
+// includes the prompt instruction file in both scopes.
 func validProfileStateScope(state *profileState, backup string, raw []byte) bool {
 	var expected string
 	var err error
@@ -106,6 +107,7 @@ func validProfileStateScope(state *profileState, backup string, raw []byte) bool
 			return false
 		}
 		targets := projectProfileTargets(state.Provider, state.Project)
+		targets = targets[:len(targets)-1]
 		if len(state.Snapshots) != len(targets) {
 			return false
 		}
@@ -115,6 +117,33 @@ func validProfileStateScope(state *profileState, backup string, raw []byte) bool
 			}
 		}
 		expected, err = projectProfileBackupDirectory(state.Provider, state.Project)
+	case 3:
+		if !requiredStateFields(raw, "scope") {
+			return false
+		}
+		switch state.Scope {
+		case profileScopeGlobal:
+			if state.Project != "" {
+				return false
+			}
+			expected, err = profileBackupDirectory(state.Provider)
+		case profileScopeProject:
+			if !requiredStateFields(raw, "project_directory") || !filepath.IsAbs(state.Project) || state.Project != filepath.Clean(state.Project) {
+				return false
+			}
+			targets := projectProfileTargets(state.Provider, state.Project)
+			if len(state.Snapshots) != len(targets) {
+				return false
+			}
+			for i, snapshot := range state.Snapshots {
+				if snapshot.profileTarget != targets[i] {
+					return false
+				}
+			}
+			expected, err = projectProfileBackupDirectory(state.Provider, state.Project)
+		default:
+			return false
+		}
 	default:
 		return false
 	}
