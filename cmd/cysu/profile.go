@@ -9,11 +9,11 @@ import (
 )
 
 var profileNameFlag = flagSpec{
-	name: "profile", placeholder: "profile", usage: "profile to install (overrides CYSU_PROFILE; default: default)",
+	name: "profile", placeholder: "profile", usage: "profile name (overrides CYSU_PROFILE; default: default)",
 	fallback: profileFromEnvironment,
 }
 
-// profileFromEnvironment supplies the default profile for installation in either scope.
+// profileFromEnvironment supplies the default profile for profile commands.
 func profileFromEnvironment() (string, error) {
 	profile := strings.TrimSpace(os.Getenv("CYSU_PROFILE"))
 	if profile == "" {
@@ -29,6 +29,8 @@ var profileScopeFlag = flagSpec{
 var profileResource = resource{
 	name: "profile", title: "Profiles", api: true,
 	commands: []command{
+		{name: "edit", flags: []flagSpec{profileNameFlag}, run: func(v flagValues) error { return editProfile(v["profile"]) }},
+		{name: "save", flags: []flagSpec{profileNameFlag}, run: func(v flagValues) error { return saveEditedProfile(v["profile"]) }},
 		{
 			name: "install", flags: []flagSpec{profileNameFlag, providerFlag, profileScopeFlag},
 			run: func(v flagValues) error { return installProfile(v["profile"], v["provider"], v["scope"]) },

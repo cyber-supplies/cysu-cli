@@ -14,20 +14,20 @@ package main
 //	download  POST /javascript/export {domain}   -> {url, expiresAt}
 //	          then GET url, a ZIP of the collection
 //
-// clear removes downloaded collections from $HOME/cysu-js locally.
+// clear removes downloaded collections from $HOME/cysu/js locally.
 //
 // The service keeps one collection per user per domain. The gateway identifies
 // the user from the token, so no command takes a user ID.
 //
-// The archive is extracted under $HOME/cysu-js exactly as it is laid out
-// inside, which puts a domain's files at $HOME/cysu-js/<domain>/<path>: the
+// The archive is extracted under $HOME/cysu/js exactly as it is laid out
+// inside, which puts a domain's files at $HOME/cysu/js/<domain>/<path>: the
 // service names every entry <host>/<path> already. Names are kept rather than
 // rewritten because manifest.jsonl indexes every file and every analyzer match
 // by that same path, and keeping the two in step is the point of the manifest -
 // a match line is enough to open the right file at the right line. The
 // manifest itself travels at the archive root and is written into the domain's
 // directory, one per collection. Entry names come from a remote site's URLs,
-// so each one is checked to be sure it stays inside cysu-js.
+// so each one is checked to be sure it stays inside cysu/js.
 
 import (
 	"archive/zip"
@@ -39,9 +39,9 @@ import (
 	"time"
 )
 
-// collectionDir is the directory under the user's home where downloaded
+// collectionDir is the directory under ~/cysu where downloaded
 // collections are kept, one subdirectory per domain.
-const collectionDir = "cysu-js"
+const collectionDir = "js"
 
 // manifestName is the archive entry that indexes the collection.
 const manifestName = "manifest.jsonl"
@@ -178,7 +178,7 @@ func clearJavascript() error {
 	if err != nil {
 		return failf("finding the home directory: %v", err)
 	}
-	root := filepath.Join(home, collectionDir)
+	root := filepath.Join(home, "cysu", collectionDir)
 	info, err := os.Lstat(root)
 	if os.IsNotExist(err) {
 		return printJSON(struct {
@@ -208,7 +208,7 @@ func clearJavascript() error {
 // ---------------------------------------------------------------------------
 
 // collectionPaths returns the two directories an export is unpacked against:
-// base, cysu-js in the user's home, which archive entry names are resolved
+// base, cysu/js in the user's home, which archive entry names are resolved
 // from, and root, the domain's own directory beneath it.
 //
 // They differ because the service already names every entry <host>/<path>,
@@ -230,7 +230,7 @@ func collectionPaths(domain string) (string, string, error) {
 		return "", "", failf("finding the home directory: %v", err)
 	}
 
-	base := filepath.Join(home, collectionDir)
+	base := filepath.Join(home, "cysu", collectionDir)
 	return base, filepath.Join(base, name), nil
 }
 
