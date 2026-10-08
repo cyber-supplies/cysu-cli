@@ -200,6 +200,28 @@ cysu endpoints list
 
 **Important** - The parameters 'domain' and 'path' are regex strings, by default matching on strings containing the regex. I.e 'example', will match domains 'example.com' or 'example2.com'
 
+Endpoints are only saved on in-scope domains, to view the current scope:
+
+```
+cysu endpoints list-scope
+
+{
+  "scope": [
+    "example"
+  ]
+}
+```
+
+To add or replace (set) the scope:
+
+```
+cysu endpoints add-scope --scope 'example'
+
+cysu endpoints set-scope --scope 'example'
+```
+
+**Important** - The scope parameter is a regex string, and will match any domains containing the string.
+
 ## Out-of-Bounds
 
 Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled.

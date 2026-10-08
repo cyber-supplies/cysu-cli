@@ -67,6 +67,9 @@ type command struct {
 	flags []flagSpec
 	run   func(v flagValues) error
 
+	// validate checks related flags before authentication or key loading.
+	validate func(v flagValues) error
+
 	// local marks a command of an API resource that never talks to the
 	// gateway (for example, local key management): it needs neither a token nor the key.
 	local bool
@@ -235,6 +238,11 @@ func (c command) parse(r resource, args []string) (flagValues, error) {
 	}
 	if len(missing) > 1 {
 		return nil, usageErrorf(usage, "%s: missing required flags %s", qualified, strings.Join(missing, ", "))
+	}
+	if c.validate != nil {
+		if err := c.validate(values); err != nil {
+			return nil, withUsage(err, usage)
+		}
 	}
 	return values, nil
 }

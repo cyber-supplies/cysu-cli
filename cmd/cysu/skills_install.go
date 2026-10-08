@@ -92,7 +92,7 @@ func normalizeSkillProvider(provider string) (string, error) {
 
 // installSkills fetches all saved skills, validates and stages the complete
 // set, backs up the existing provider directory, and installs only CYSU skills.
-func installSkills(providerValue string) error {
+func installSkills(providerValue, profile string) error {
 	provider, err := normalizeSkillProvider(providerValue)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func installSkills(providerValue string) error {
 		return err
 	}
 
-	raw, err := send("GET", apiPath("skills"), nil)
+	raw, err := send("GET", apiPath("profiles", profile, "skills"), nil)
 	if err != nil {
 		return err
 	}
@@ -223,8 +223,9 @@ func decodeStoredSkills(raw []byte) ([]storedSkill, error) {
 		skills = []storedSkill{}
 	}
 	for i, skill := range skills {
-		if strings.TrimSpace(skill.ID) == "" {
-			return nil, failf("unexpected skills response: entry %d has no id", i)
+		skills[i].ID = skill.Name
+		if strings.TrimSpace(skill.Name) == "" {
+			return nil, failf("unexpected skills response: entry %d has no name", i)
 		}
 	}
 	return skills, nil

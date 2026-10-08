@@ -43,8 +43,6 @@ The tag is the version. The workflow builds and publishes `@cyber-supplies/cysu`
 
 `CYSU_PROVIDER` - The default provider for profile installation: `AGENTS`, `CLAUDE`, or `CODEX`.
 
-`CYSU_PROFILE` - The profile to use globally.
-
 ## Usage
 
 ```
@@ -65,28 +63,13 @@ JavaScript:
   cysu javascript download  --domain <domain>
   cysu javascript clear
 
-Endpoints
+Endpoints:
   cysu endpoints list [--domain <domain] [--path <path>] [--method <method>]
 
-Skills:
-  cysu skills list [--profile <profile>]
-  cysu skills create --file <file> [--profile <profile>]
-  cysu skills replace --skill <id> --file <file> [--profile <profile>]
-  cysu skills remove  --skill <id>
-  cysu skills install [--provider <provider>]
-  cysu skills uninstall [--provider <provider>]
+  cysu endpoints list-scope
 
-Agents:
-  cysu agents list
-  cysu agents create --file <file> [--profile <profile>]
-  cysu agents replace --agent <id> [--file <file] [--profile <profile>]
-  cysu agents remove  --agent <id>
-
-MCP:
-  cysu mcp list
-  cysu mcp create --type <type>
-  cysu mcp modify --type <type>
-  cysu mcp remove  --mcp <id>
+  cysu endpoints add-scope --scope <regex>
+  cysu endpoints set-scope --scope <regex>
 
 Email:
   cysu email accounts
@@ -94,8 +77,16 @@ Email:
   cysu email read --account <accountId> --email <emailId>
 
 Profiles:
-  cysu profile install --scope <global|project> [--profile <profile>] [--provider <provider>]
-  cysu profile uninstall [--provider <provider>] --scope <global|project>
+  cysu profiles install --scope <global|project> --profile <profile> [--provider <provider>]
+  cysu profiles uninstall --scope <global|project> [--provider <provider>] 
+
+  cysu profiles list
+  cysu profiles read --profile <profile>
+  cysu profiles remove --profile <profile>
+
+  cysu profiles create --profile <profile> [--example]
+  cysu profiles edit [--profile <profile>] [--all]
+  cysu profiles save [--profile <profile>] [--all]
 
 Out-of-Bounds:
   cysu oob create

@@ -3,12 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 )
 
 var profileNameFlag = flagSpec{
+	name: "profile", placeholder: "profile", usage: "profile name", required: true,
+}
+
+var profileSaveNameFlag = flagSpec{
 	name: "profile", placeholder: "profile", usage: "profile name (overrides CYSU_PROFILE; default: default)",
 	fallback: profileFromEnvironment,
 }
@@ -27,10 +30,48 @@ var profileScopeFlag = flagSpec{
 }
 
 var profileResource = resource{
-	name: "profile", title: "Profiles", api: true,
+	name: "profiles", title: "Profiles", api: true,
 	commands: []command{
-		{name: "edit", flags: []flagSpec{profileNameFlag}, run: func(v flagValues) error { return editProfile(v["profile"]) }},
-		{name: "save", flags: []flagSpec{profileNameFlag}, run: func(v flagValues) error { return saveEditedProfile(v["profile"]) }},
+		{name: "list", run: func(v flagValues) error { return request("GET", apiPath("profiles"), nil) }},
+		{name: "read", flags: []flagSpec{profileNameFlag}, run: func(v flagValues) error {
+			return request("GET", apiPath("profiles", v["profile"]), nil)
+		}},
+		{name: "remove", flags: []flagSpec{profileNameFlag}, run: func(v flagValues) error {
+			return request("DELETE", apiPath("profiles", v["profile"]), nil)
+		}},
+		{name: "create", local: true, flags: []flagSpec{profileNameFlag, {name: "example", boolean: true, usage: "populate one sample skill, agent, MCP server, and prompt"}}, run: func(v flagValues) error {
+			return createProfile(v["profile"], v.enabled("example"))
+		}},
+		{
+			name: "edit", flags: []flagSpec{
+				{name: "profile", placeholder: "profile", usage: "profile name"},
+				{name: "all", boolean: true, usage: "pull all remote profiles into ~/cysu/profiles (overrides --profile)"},
+			},
+			validate: func(v flagValues) error {
+				if !v.enabled("all") && strings.TrimSpace(v["profile"]) == "" {
+					return cliError{message: "profiles edit: provide --profile or --all", exit: exitUsage}
+				}
+				return nil
+			},
+			run: func(v flagValues) error {
+				if v.enabled("all") {
+					return editAllProfiles()
+				}
+				return editProfile(v["profile"])
+			},
+		},
+		{
+			name: "save", flags: []flagSpec{
+				profileSaveNameFlag,
+				{name: "all", boolean: true, usage: "save all local profiles in ~/cysu/profiles (overrides --profile and CYSU_PROFILE)"},
+			},
+			run: func(v flagValues) error {
+				if v.enabled("all") {
+					return saveAllEditedProfiles()
+				}
+				return saveEditedProfile(v["profile"])
+			},
+		},
 		{
 			name: "install", flags: []flagSpec{profileNameFlag, providerFlag, profileScopeFlag},
 			run: func(v flagValues) error { return installProfile(v["profile"], v["provider"], v["scope"]) },
@@ -52,6 +93,7 @@ type storedAgent struct {
 }
 
 type storedMCP struct {
+	Name    string            `json:"name"`
 	ID      string            `json:"id"`
 	Type    string            `json:"type"`
 	URL     string            `json:"url"`
@@ -62,63 +104,39 @@ type storedMCP struct {
 }
 
 type profileBundle struct {
+	ID      string `json:"id"`
 	Skills  []storedSkill
 	Agents  []storedAgent
 	MCP     []storedMCP
 	Prompts []storedPrompt
 }
 
-// Fetch every resource through the profile-filtered API before changing local
-// configuration. Checking the returned profile also detects older servers that
-// silently ignore the query parameter.
+// fetchProfile reads all resources from one consistent server-side snapshot.
 func fetchProfile(profile string) (profileBundle, error) {
 	var bundle profileBundle
-	for _, resource := range []struct {
-		name string
-		out  any
-	}{{"skills", &bundle.Skills}, {"agents", &bundle.Agents}, {"mcp", &bundle.MCP}} {
-		raw, err := send("GET", apiPath(resource.name)+"?profile="+url.QueryEscape(profile), nil)
-		if err != nil {
-			return bundle, err
-		}
-		if len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, resource.out) != nil {
-			return bundle, failf("unexpected %s response: expected a JSON array", resource.name)
-		}
-	}
-	var err error
-	bundle.Prompts, err = fetchPrompts(profile)
+	raw, err := send("GET", apiPath("profiles", profile), nil)
 	if err != nil {
 		return bundle, err
 	}
-	if len(bundle.Skills)+len(bundle.Agents)+len(bundle.MCP)+len(bundle.Prompts) == 0 {
-		return bundle, failf("profile %q contains no skills, agents, MCP servers, or prompts", profile)
+	if json.Unmarshal(raw, &bundle) != nil || bundle.ID != profile || bundle.Skills == nil || bundle.Agents == nil || bundle.MCP == nil || bundle.Prompts == nil {
+		return bundle, failf("invalid profile response for %q", profile)
 	}
-	for _, skill := range bundle.Skills {
-		if err := checkProfileEntry(skill.ID, skill.Profile, profile); err != nil {
-			return bundle, err
-		}
+	for i := range bundle.Skills {
+		bundle.Skills[i].ID = bundle.Skills[i].Name
 	}
-	for _, agent := range bundle.Agents {
-		if err := checkProfileEntry(agent.ID, agent.Profile, profile); err != nil {
-			return bundle, err
-		}
+	for i := range bundle.Agents {
+		bundle.Agents[i].ID = bundle.Agents[i].Name
 	}
-	for _, server := range bundle.MCP {
-		if err := checkProfileEntry(server.ID, server.Profile, profile); err != nil {
-			return bundle, err
-		}
+	for i := range bundle.MCP {
+		bundle.MCP[i].ID = bundle.MCP[i].Name
+	}
+	for i := range bundle.Prompts {
+		bundle.Prompts[i].ID = bundle.Prompts[i].Name
+	}
+	if err := validateStoredPrompts(bundle.Prompts); err != nil {
+		return bundle, err
 	}
 	return bundle, nil
-}
-
-func checkProfileEntry(id, actual, expected string) error {
-	if strings.TrimSpace(id) == "" {
-		return failf("profile response contains an entry without an id")
-	}
-	if actual != expected {
-		return failf("resource %s has profile %q, expected %q; ensure the storage API supports profile filtering", id, actual, expected)
-	}
-	return nil
 }
 
 func installProfile(profile, providerValue, scopeValue string) error {

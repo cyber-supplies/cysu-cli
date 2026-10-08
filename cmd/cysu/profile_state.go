@@ -353,7 +353,7 @@ func checkProfileOwnership(layout profileLayout) error {
 		} else if exists {
 			for _, target := range layout.Targets {
 				if pathsOverlap(target.Path, skills) {
-					return failf("an earlier skills backup exists at %s; run cysu skills uninstall --provider %s first", backup, provider)
+					return failf("an earlier skills backup exists at %s; restore that backup before installing a profile", backup)
 				}
 			}
 		}

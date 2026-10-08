@@ -226,7 +226,7 @@ func storedProfileOwners(excludeBackup string) ([]*profileState, error) {
 }
 
 func profileOwnerRestoreHint(state *profileState) string {
-	hint := fmt.Sprintf("run cysu profile uninstall --provider %s --scope %s", state.Provider, state.Scope)
+	hint := fmt.Sprintf("run cysu profiles uninstall --provider %s --scope %s", state.Provider, state.Scope)
 	if state.Scope == profileScopeProject {
 		hint += fmt.Sprintf(" from %q", state.Project)
 	}

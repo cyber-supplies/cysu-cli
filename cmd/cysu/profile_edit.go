@@ -8,8 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -98,53 +96,34 @@ func lockProfileEdit(statePath string) (func(), error) {
 	return func() { _ = lock.Close() }, nil
 }
 
-// fetchProfileEditItems keeps IDs separate from editable API fields and checks scope.
+// fetchProfileEditItems exports the same whole-profile snapshot used for installation.
 func fetchProfileEditItems(profile string) ([]profileEditItem, error) {
+	raw, err := send("GET", apiPath("profiles", profile), nil)
+	if err != nil {
+		return nil, err
+	}
+	var snapshot map[string]json.RawMessage
+	if json.Unmarshal(raw, &snapshot) != nil {
+		return nil, failf("invalid profile response")
+	}
+	var id string
+	if json.Unmarshal(snapshot["id"], &id) != nil || id != profile {
+		return nil, failf("profile response does not match %q", profile)
+	}
 	var items []profileEditItem
-	seen := map[string]bool{}
 	for _, kind := range profileEditKinds {
-		raw, err := send("GET", apiPath(kind)+"?profile="+url.QueryEscape(profile), nil)
-		if err != nil {
-			return nil, err
-		}
 		var rows []map[string]any
-		if len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, &rows) != nil {
-			return nil, failf("unexpected %s response: expected a JSON array", kind)
+		if json.Unmarshal(snapshot[kind], &rows) != nil || rows == nil {
+			return nil, failf("invalid %s response", kind)
 		}
-		for _, row := range rows {
-			id, _ := row["id"].(string)
-			actual, _ := row["profile"].(string)
-			if err := checkProfileEntry(id, actual, profile); err != nil {
-				return nil, err
+		seen := map[string]bool{}
+		for _, doc := range rows {
+			name, _ := doc["name"].(string)
+			if !slugNameValid(name) || seen[name] {
+				return nil, failf("invalid or duplicate %s name %q", kind, name)
 			}
-			name, _ := row["name"].(string)
-			if kind == "mcp" && name == "" {
-				name = id
-			}
-			safe, err := safeSkillDirectoryName(name)
-			if err != nil || safe != name {
-				return nil, failf("invalid %s name %q", kind, name)
-			}
-			key := kind + "/" + strings.ToLower(name)
-			if seen[key] || seen[kind+"/id:"+id] {
-				return nil, failf("duplicate %s name or id: %s", kind, name)
-			}
-			seen[key] = true
-			seen[kind+"/id:"+id] = true
-			doc := map[string]any{}
-			fields := []string{"name", "description", "content", "profile"}
-			if kind == "agents" {
-				fields = append(fields, "model")
-			}
-			if kind == "mcp" {
-				fields = []string{"name", "type", "url", "command", "args", "headers", "profile"}
-			}
-			for _, field := range fields {
-				if value, ok := row[field]; ok {
-					doc[field] = value
-				}
-			}
-			items = append(items, profileEditItem{kind, name, id, doc})
+			seen[name] = true
+			items = append(items, profileEditItem{Kind: kind, Name: name, ID: name, Doc: doc})
 		}
 	}
 	return items, nil
@@ -200,70 +179,115 @@ func writeProfileEditState(path string, state profileEditState) error {
 	return os.Rename(f.Name(), path)
 }
 
-// editProfile validates a fresh checkout before discarding the previous local edits.
+// editProfile downloads one existing remote profile and prints its local path.
 func editProfile(profile string) error {
-	root, statePath, err := profileEditPaths(profile)
+	result, err := checkoutProfile(profile)
 	if err != nil {
 		return err
 	}
-	unlock, err := lockProfileEdit(statePath)
+	return printJSON(result)
+}
+
+// editAllProfiles pulls only profiles returned by the API, leaving local-only
+// directories alone. Each checkout follows the same rules as single-profile edit.
+func editAllProfiles() error {
+	raw, err := send("GET", apiPath("profiles"), nil)
 	if err != nil {
 		return err
+	}
+	var profiles []struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(raw, &profiles) != nil || profiles == nil {
+		return failf("invalid profiles response: expected a JSON array")
+	}
+	seen := map[string]bool{}
+	// Reject unsafe or colliding names before replacing any local checkout.
+	for _, profile := range profiles {
+		if _, _, err := profileEditPaths(profile.ID); err != nil {
+			return err
+		}
+		key := strings.ToLower(profile.ID)
+		if seen[key] {
+			return failf("duplicate profile directory name %q", profile.ID)
+		}
+		seen[key] = true
+	}
+	results := make([]map[string]any, 0, len(profiles))
+	for _, profile := range profiles {
+		result, err := checkoutProfile(profile.ID)
+		if err != nil {
+			return failf("pulling profile %q failed after %d completed profiles; earlier local checkouts may have been replaced: %v", profile.ID, len(results), err)
+		}
+		results = append(results, result)
+	}
+	return printJSON(map[string]any{"success": true, "profiles": results})
+}
+
+// checkoutProfile validates a fresh checkout before discarding the previous local edits.
+func checkoutProfile(profile string) (map[string]any, error) {
+	root, statePath, err := profileEditPaths(profile)
+	if err != nil {
+		return nil, err
+	}
+	unlock, err := lockProfileEdit(statePath)
+	if err != nil {
+		return nil, err
 	}
 	defer unlock()
 	items, err := fetchProfileEditItems(profile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err = os.MkdirAll(filepath.Dir(root), 0700); err != nil {
-		return err
+		return nil, err
 	}
 	stage, err := os.MkdirTemp(filepath.Dir(root), ".profile-edit-*")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer os.RemoveAll(stage)
 	state := profileEditState{profile, resolveBaseURL(), root, map[string]string{}}
 	for _, kind := range profileEditKinds {
 		if err = os.Mkdir(filepath.Join(stage, kind), 0700); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	for _, item := range items {
 		raw, err := renderProfileEditItem(item)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		dir := filepath.Join(stage, item.Kind, item.Name)
 		if err = os.Mkdir(dir, 0700); err != nil {
-			return err
+			return nil, err
 		}
 		if err = os.WriteFile(filepath.Join(dir, profileEditFiles[item.Kind]), raw, 0600); err != nil {
-			return err
+			return nil, err
 		}
 		state.IDs[item.Kind+"/"+item.Name] = item.ID
 	}
 	// Check remote documents with the same validation used before saving.
 	if _, err = readProfileEditItems(stage, profile); err != nil {
-		return err
+		return nil, err
 	}
 	if info, statErr := os.Lstat(root); statErr == nil {
 		if !info.IsDir() {
-			return failf("profile checkout is not a directory: %s", root)
+			return nil, failf("profile checkout is not a directory: %s", root)
 		}
 		if err = os.RemoveAll(root); err != nil {
-			return err
+			return nil, err
 		}
 	} else if !os.IsNotExist(statErr) {
-		return statErr
+		return nil, statErr
 	}
 	if err = os.Rename(stage, root); err != nil {
-		return err
+		return nil, err
 	}
 	if err = writeProfileEditState(statePath, state); err != nil {
-		return failf("profile exported to %s but saving checkout state failed: %v", root, err)
+		return nil, failf("profile exported to %s but saving checkout state failed: %v", root, err)
 	}
-	return printJSON(map[string]any{"success": true, "profile": profile, "directory": root, "items": len(items)})
+	return map[string]any{"success": true, "profile": profile, "directory": root, "items": len(items)}, nil
 }
 
 // readProfileEditItems validates the entire local source before any remote mutation.
@@ -331,8 +355,8 @@ func readProfileEditItems(root, profile string) ([]profileEditItem, error) {
 				if json.Unmarshal(raw, &doc) != nil || doc == nil {
 					return nil, failf("expected a JSON object: %s", path)
 				}
-				// Legacy servers have no name; their ID is the only available directory name.
-				if _, ok := doc["name"]; !ok && !profileMCPID.MatchString(dir.Name()) {
+				// The directory supplies the name when settings omit it.
+				if _, ok := doc["name"]; !ok {
 					doc["name"] = dir.Name()
 				}
 			} else {
@@ -370,19 +394,23 @@ func validateProfileEditDocument(kind, name string, doc map[string]any, path str
 			return err
 		}
 	}
+	if kind == "skills" {
+		description, ok := doc["description"].(string)
+		if !ok || strings.TrimSpace(description) == "" {
+			return failf("skill %s requires description", name)
+		}
+	}
 	if kind == "prompts" || kind == "skills" {
 		_, err := validatePromptDocument(doc, path, true)
 		if err != nil {
 			return err
 		}
 	}
-	if kind != "mcp" || doc["name"] != nil {
-		if doc["name"] != name {
-			return failf("name in %s must match directory %q", path, name)
-		}
-		if !slugNameValid(name) {
-			return failf("name in %s must be a lowercase hyphenated slug", path)
-		}
+	if doc["name"] != name {
+		return failf("name in %s must match directory %q", path, name)
+	}
+	if !slugNameValid(name) {
+		return failf("name in %s must be a lowercase hyphenated slug", path)
 	}
 	if kind != "mcp" {
 		return nil
@@ -438,114 +466,84 @@ func validateProfileEditDocument(kind, name string, doc map[string]any, path str
 	return nil
 }
 
-// saveEditedProfile reconciles only this profile; deletions happen after all upserts.
+// saveEditedProfile prints the result of saving a single local profile.
 func saveEditedProfile(profile string) error {
-	root, statePath, err := profileEditPaths(profile)
+	result, err := reconcileEditedProfile(profile)
 	if err != nil {
 		return err
+	}
+	return printJSON(result)
+}
+
+// saveAllEditedProfiles saves immediate profile directories in name order.
+func saveAllEditedProfiles() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	root := filepath.Join(home, "cysu", "profiles")
+	if err := profileEditNoLinks(root); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	profiles := []string{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		// Validate every directory name before starting remote changes.
+		if _, _, err := profileEditPaths(entry.Name()); err != nil {
+			return err
+		}
+		profiles = append(profiles, entry.Name())
+	}
+	results := make([]map[string]any, 0, len(profiles))
+	for _, profile := range profiles {
+		result, err := reconcileEditedProfile(profile)
+		if err != nil {
+			return failf("saving profile %q failed after %d completed profiles; earlier changes may have applied: %v", profile, len(results), err)
+		}
+		results = append(results, result)
+	}
+	return printJSON(map[string]any{"success": true, "profiles": results})
+}
+
+// reconcileEditedProfile sends one complete replacement; the server commits it atomically.
+func reconcileEditedProfile(profile string) (map[string]any, error) {
+	root, statePath, err := profileEditPaths(profile)
+	if err != nil {
+		return nil, err
 	}
 	unlock, err := lockProfileEdit(statePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer unlock()
-	raw, err := os.ReadFile(statePath)
-	if err != nil {
-		return failf("run cysu profile edit --profile %q first: %v", profile, err)
-	}
-	var state profileEditState
-	if json.Unmarshal(raw, &state) != nil || state.Profile != profile || state.Endpoint != resolveBaseURL() || state.Directory != root || state.IDs == nil {
-		return failf("invalid profile checkout state")
-	}
 	local, err := readProfileEditItems(root, profile)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	remote, err := fetchProfileEditItems(profile)
+	body := map[string]any{"id": profile}
+	for _, kind := range profileEditKinds {
+		body[kind] = []map[string]any{}
+	}
+	for _, item := range local {
+		delete(item.Doc, "profile")
+		body[item.Kind] = append(body[item.Kind].([]map[string]any), item.Doc)
+	}
+	raw, err := send("PUT", apiPath("profiles", profile), body)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	byID := map[string]profileEditItem{}
-	byName := map[string]profileEditItem{}
-	for _, item := range remote {
-		byID[item.Kind+"/"+item.ID] = item
-		byName[item.Kind+"/"+item.Name] = item
+	var result struct {
+		ID      string         `json:"id"`
+		Changes map[string]int `json:"changes"`
 	}
-	keep := map[string]bool{}
-	counts := map[string]int{"created": 0, "updated": 0, "deleted": 0, "unchanged": 0}
-	// Build the full plan first: a tampered/stale ID may never target another profile.
-	for i := range local {
-		item := &local[i]
-		key := item.Kind + "/" + item.Name
-		if id := state.IDs[key]; id != "" {
-			if _, ok := byID[item.Kind+"/"+id]; ok {
-				item.ID = id
-			}
-		}
-		if item.ID == "" {
-			if existing, ok := byName[key]; ok {
-				item.ID = existing.ID
-			}
-		}
-		if item.ID != "" {
-			k := item.Kind + "/" + item.ID
-			if keep[k] {
-				return failf("multiple local entries refer to %s", k)
-			}
-			keep[k] = true
-		}
+	if json.Unmarshal(raw, &result) != nil || result.ID != profile || result.Changes == nil {
+		return nil, failf("invalid profile save response; remote changes may have applied")
 	}
-	for _, item := range local {
-		key := item.Kind + "/" + item.Name
-		method, path := "POST", apiPath(item.Kind)
-		if item.ID != "" {
-			if reflect.DeepEqual(item.Doc, byID[item.Kind+"/"+item.ID].Doc) {
-				counts["unchanged"]++
-				state.IDs[key] = item.ID
-				continue
-			}
-			method, path = "PUT", apiPath(item.Kind, item.ID)
-		}
-		result, err := send(method, path, item.Doc)
-		if err != nil {
-			return failf("profile save stopped at %s; earlier writes may have applied; no further changes made: %v", key, err)
-		}
-		var saved struct {
-			ID string `json:"id"`
-		}
-		if json.Unmarshal(result, &saved) != nil || saved.ID == "" || (item.ID != "" && saved.ID != item.ID) {
-			return failf("invalid save response for %s; remote changes may have applied", key)
-		}
-		state.IDs[key] = saved.ID
-		keep[item.Kind+"/"+saved.ID] = true
-		if method == "POST" {
-			counts["created"]++
-		} else {
-			counts["updated"]++
-		}
-		// Persist newly assigned IDs immediately so retrying does not duplicate creates.
-		if err = writeProfileEditState(statePath, state); err != nil {
-			return failf("remote save succeeded but recording %s failed: %v", key, err)
-		}
-	}
-	sort.Slice(remote, func(i, j int) bool { return remote[i].Kind+remote[i].ID < remote[j].Kind+remote[j].ID })
-	for _, item := range remote {
-		if keep[item.Kind+"/"+item.ID] {
-			continue
-		}
-		if _, err = send("DELETE", apiPath(item.Kind, item.ID), nil); err != nil {
-			return failf("profile save partially applied; deleting %s/%s failed: %v", item.Kind, item.Name, err)
-		}
-		counts["deleted"]++
-	}
-	ids := map[string]string{}
-	for _, item := range local {
-		key := item.Kind + "/" + item.Name
-		ids[key] = state.IDs[key]
-	}
-	state.IDs = ids
-	if err = writeProfileEditState(statePath, state); err != nil {
-		return err
-	}
-	return printJSON(map[string]any{"success": true, "profile": profile, "directory": root, "changes": counts})
+	return map[string]any{"success": true, "profile": profile, "directory": root, "changes": result.Changes}, nil
 }

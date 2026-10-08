@@ -16,7 +16,6 @@ import (
 )
 
 var profileAgentName = regexp.MustCompile("^[a-z0-9]+(-[a-z0-9]+)*$")
-var profileMCPID = regexp.MustCompile("^mcp_[0-7][0-9a-hjkmnp-tv-z]{25}$")
 var profileHeaderName = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 
 // Render and validate everything in memory before creating a backup or
@@ -131,28 +130,28 @@ func renderProfileAgent(provider string, agent storedAgent) ([]byte, error) {
 func profileMCPServers(provider string, servers []storedMCP) (map[string]any, error) {
 	result := make(map[string]any, len(servers))
 	for _, server := range servers {
-		if !profileMCPID.MatchString(server.ID) {
+		if !slugNameValid(server.Name) {
 			return nil, failf("MCP entry has an invalid id")
 		}
-		if _, exists := result[server.ID]; exists {
-			return nil, failf("duplicate MCP id %s", server.ID)
+		if _, exists := result[server.Name]; exists {
+			return nil, failf("duplicate MCP id %s", server.Name)
 		}
 		config := map[string]any{}
 		switch server.Type {
 		case "stdio":
 			if strings.TrimSpace(server.Command) == "" || server.Args == nil || server.Headers != nil {
-				return nil, failf("MCP server %s has an invalid stdio configuration", server.ID)
+				return nil, failf("MCP server %s has an invalid stdio configuration", server.Name)
 			}
 			config["command"] = strings.TrimSpace(server.Command)
 			config["args"] = server.Args
 		case "http":
 			u, err := url.Parse(server.URL)
 			if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || server.Headers == nil || server.Command != "" || server.Args != nil {
-				return nil, failf("MCP server %s has an invalid HTTP configuration", server.ID)
+				return nil, failf("MCP server %s has an invalid HTTP configuration", server.Name)
 			}
 			for name, value := range server.Headers {
 				if !profileHeaderName.MatchString(name) || strings.ContainsAny(value, "\r\n\x00") {
-					return nil, failf("MCP server %s has an invalid HTTP header", server.ID)
+					return nil, failf("MCP server %s has an invalid HTTP header", server.Name)
 				}
 			}
 			config["url"] = server.URL
@@ -162,12 +161,12 @@ func profileMCPServers(provider string, servers []storedMCP) (map[string]any, er
 			}
 			config[headersKey] = server.Headers
 		default:
-			return nil, failf("MCP server %s has an unsupported type", server.ID)
+			return nil, failf("MCP server %s has an unsupported type", server.Name)
 		}
 		if provider != skillProviderCodex {
 			config["type"] = server.Type
 		}
-		result[server.ID] = config
+		result[server.Name] = config
 	}
 	return result, nil
 }
