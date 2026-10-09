@@ -18,6 +18,8 @@ import (
 var profileEditFiles = map[string]string{"skills": "SKILL.md", "agents": "AGENT.md", "mcp": "settings.json", "prompts": "AGENTS.md"}
 var profileEditKinds = []string{"skills", "agents", "mcp", "prompts"}
 
+const profileTagsFile = "tags.txt"
+
 type profileEditItem struct {
 	Kind string
 	Name string
@@ -96,37 +98,112 @@ func lockProfileEdit(statePath string) (func(), error) {
 	return func() { _ = lock.Close() }, nil
 }
 
-// fetchProfileEditItems exports the same whole-profile snapshot used for installation.
-func fetchProfileEditItems(profile string) ([]profileEditItem, error) {
+// fetchProfileEditSnapshot exports the same whole-profile snapshot used for installation.
+func fetchProfileEditSnapshot(profile string) ([]profileEditItem, []string, error) {
 	raw, err := send("GET", apiPath("profiles", profile), nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var snapshot map[string]json.RawMessage
 	if json.Unmarshal(raw, &snapshot) != nil {
-		return nil, failf("invalid profile response")
+		return nil, nil, failf("invalid profile response")
 	}
 	var id string
 	if json.Unmarshal(snapshot["id"], &id) != nil || id != profile {
-		return nil, failf("profile response does not match %q", profile)
+		return nil, nil, failf("profile response does not match %q", profile)
+	}
+	var tags []string
+	if json.Unmarshal(snapshot["tag"], &tags) != nil || tags == nil {
+		return nil, nil, failf("invalid profile tags response: expected an array of strings")
+	}
+	if err := validateProfileTags(tags); err != nil {
+		return nil, nil, err
 	}
 	var items []profileEditItem
 	for _, kind := range profileEditKinds {
 		var rows []map[string]any
 		if json.Unmarshal(snapshot[kind], &rows) != nil || rows == nil {
-			return nil, failf("invalid %s response", kind)
+			return nil, nil, failf("invalid %s response", kind)
 		}
 		seen := map[string]bool{}
 		for _, doc := range rows {
 			name, _ := doc["name"].(string)
 			if !slugNameValid(name) || seen[name] {
-				return nil, failf("invalid or duplicate %s name %q", kind, name)
+				return nil, nil, failf("invalid or duplicate %s name %q", kind, name)
 			}
 			seen[name] = true
 			items = append(items, profileEditItem{Kind: kind, Name: name, ID: name, Doc: doc})
 		}
 	}
-	return items, nil
+	return items, tags, nil
+}
+
+// validateProfileTags keeps tags distinct and representable as single lines.
+func validateProfileTags(tags []string) error {
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		if tag == "" || tag != strings.TrimSpace(tag) || strings.ContainsAny(tag, "\r\n\x00") || strings.ContainsRune(tag, '\ufeff') {
+			return failf("tags must be non-empty single lines without surrounding whitespace")
+		}
+		if seen[tag] {
+			return failf("duplicate tag %q", tag)
+		}
+		seen[tag] = true
+	}
+	return nil
+}
+
+// readProfileEditTags reads one exact tag per non-empty line. A missing file is
+// an older checkout and means that save should preserve the remote tags.
+func readProfileEditTags(root string) ([]string, bool, error) {
+	path := filepath.Join(root, profileTagsFile)
+	if err := profileEditNoLinks(path); err != nil {
+		return nil, false, err
+	}
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, false, failf("tags file is not a regular file: %s", path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, err
+	}
+	if !utf8.Valid(raw) {
+		return nil, false, failf("invalid UTF-8 in %s", path)
+	}
+	text := strings.TrimPrefix(string(raw), "\ufeff")
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	if strings.ContainsRune(text, '\r') {
+		return nil, false, failf("invalid line ending in %s", path)
+	}
+	tags := []string{}
+	for _, line := range strings.Split(text, "\n") {
+		if line != "" {
+			tags = append(tags, line)
+		}
+	}
+	if err := validateProfileTags(tags); err != nil {
+		return nil, false, err
+	}
+	return tags, true, nil
+}
+
+// writeProfileEditTags emits one tag per line, including an empty file for no tags.
+func writeProfileEditTags(root string, tags []string) error {
+	if err := validateProfileTags(tags); err != nil {
+		return err
+	}
+	content := ""
+	if len(tags) > 0 {
+		content = strings.Join(tags, "\n") + "\n"
+	}
+	return os.WriteFile(filepath.Join(root, profileTagsFile), []byte(content), 0600)
 }
 
 // renderProfileEditItem uses YAML metadata and an unmodified Markdown body.
@@ -235,7 +312,7 @@ func checkoutProfile(profile string) (map[string]any, error) {
 		return nil, err
 	}
 	defer unlock()
-	items, err := fetchProfileEditItems(profile)
+	items, tags, err := fetchProfileEditSnapshot(profile)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +330,9 @@ func checkoutProfile(profile string) (map[string]any, error) {
 			return nil, err
 		}
 	}
+	if err = writeProfileEditTags(stage, tags); err != nil {
+		return nil, err
+	}
 	for _, item := range items {
 		raw, err := renderProfileEditItem(item)
 		if err != nil {
@@ -269,6 +349,9 @@ func checkoutProfile(profile string) (map[string]any, error) {
 	}
 	// Check remote documents with the same validation used before saving.
 	if _, err = readProfileEditItems(stage, profile); err != nil {
+		return nil, err
+	}
+	if _, _, err = readProfileEditTags(stage); err != nil {
 		return nil, err
 	}
 	if info, statErr := os.Lstat(root); statErr == nil {
@@ -526,7 +609,14 @@ func reconcileEditedProfile(profile string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	tags, hasTags, err := readProfileEditTags(root)
+	if err != nil {
+		return nil, err
+	}
 	body := map[string]any{"id": profile}
+	if hasTags {
+		body["tag"] = tags
+	}
 	for _, kind := range profileEditKinds {
 		body[kind] = []map[string]any{}
 	}

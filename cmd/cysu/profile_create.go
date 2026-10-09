@@ -37,6 +37,9 @@ func createProfile(profile string, example bool) error {
 			return err
 		}
 	}
+	if err := writeProfileEditTags(root, []string{}); err != nil {
+		return err
+	}
 	items := []profileEditItem{}
 	if example {
 		items = exampleProfileItems()
