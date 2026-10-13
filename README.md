@@ -52,15 +52,15 @@ Usage:
   cysu <resource> <action> [flags]
 
 Storage:
-  cysu storage list      [--project <id>] [--dir <dir>]
-  cysu storage upload    [--project <id>] --file <local> --path <path>
-  cysu storage download  [--project <id>] --path <path> --output <local>
-  cysu storage read      [--project <id>] --path <path>
+  cysu storage list [--project <id>] [--dir <dir>]
+  cysu storage upload [--project <id>] --file <local> --path <path>
+  cysu storage download [--project <id>] --path <path> --output <local>
+  cysu storage read [--project <id>] --path <path>
 
 JavaScript:
-  cysu javascript add       --url <url> [--url <url>...]
-  cysu javascript list      [--domain <domain>]
-  cysu javascript download  --domain <domain>
+  cysu javascript add --url <url> [--url <url>...]
+  cysu javascript list [--domain <domain>]
+  cysu javascript download --domain <domain>
   cysu javascript clear
 
 Endpoints:
@@ -88,19 +88,29 @@ Profiles:
   cysu profiles edit [--profile <profile>] [--all]
   cysu profiles save [--profile <profile>] [--all]
 
+Accounts:
+  cysu accounts list [--location <location>]
+  cysu accounts get --account <account>
+  cysu accounts set-cookie --account <account> --cookie <cookie>
+
+  cysu accounts create --username <user> --password <pass> --location <location>
+  cysu accounts modify --account <account> [--username <user>] [--password <pass>] [--location <location>]
+  cysu accounts remove --account <account>
+
 Out-of-Bounds:
   cysu oob create
   cysu oob pull-hits
 
-Key (encryption):
-  cysu key init    [--force]
+Key:
+  cysu key init [--force]
   cysu key path
   cysu key verify
-
-Global flags:
-  --token <token>  API token (overrides CYSU_TOKEN)
-  --debug          trace backend requests on stderr (or set CYSU_DEBUG=1)
 ```
+
+Account passwords and cookies are encrypted locally with the CLI master key before upload and
+decrypted only when an account is returned. The backend stores opaque ciphertext. `accounts list`
+never returns credentials; its optional location value is a PostgreSQL regular expression. Create,
+modify, and remove require a USER token, while USER and LLM tokens may list, get, and set cookies.
 
 ## Authentication
 

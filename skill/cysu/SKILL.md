@@ -222,6 +222,49 @@ cysu endpoints set-scope --scope 'example'
 
 **Important** - The scope parameter is a regex string, and will match any domains containing the string.
 
+## Accounts
+
+The user may provide you accounts to test the target. In order to list accounts you have access to:
+
+```
+cysu accounts list [--location <location>]
+
+[
+  {
+    "id": "acc_01k7example000000000000000",
+    "username": "alice@example.com",
+    "location": "https://example.com/login"
+  }
+]
+```
+
+Location is a regex string, which is recommended for searching. Omitting it lists every account. To retrieve the authentication details for a particular account:
+
+```
+cysu accounts get --account <account>
+
+{
+  "id": "acc_01k7example000000000000000",
+  "username": "alice@example.com",
+  "password": "12345",
+  "location": "https://example.com/login",
+  "cookie": "session=12345",
+  "updatedAt": "2006-10-13T12:00:00.000Z"
+}
+```
+
+**Important** - This returns live credentials. It is advised to not print out this output directly into your context.
+
+Passwords and cookies are encrypted before leaving the CLI and decrypted locally in command output; the backend only stores ciphertext.
+
+Cookie may be null, it is filled in when another agent completes the login flow. If cookie is null, use username and password to login. Commit the cookie after with:
+
+```
+cysu accounts set-cookie --account <account> --cookie <cookie>
+```
+
+If cookie is not null, check it's validity, and reference it's updatedAt time, as it may be expired. If it is, refresh with the login, and apply the new cookie for future agents.
+
 ## Out-of-Bounds
 
 Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled.
