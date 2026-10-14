@@ -159,28 +159,14 @@ Endpoints are saved from a proxy as agents work on the application. To list all 
 cysu endpoints list --domain <domain>
 
 {
-  "id": "1",
-  "domain": "example.com",
-  "method": "GET",
-  "path": "/api/v2/me",
-  "observedPath": "/api/v2/me",
-  "seenCount": 1,
-  "firstSeenAt": "2026-09-29T11:12:16.839Z",
-  "lastSeenAt": "2026-09-29T11:12:16.839Z",
-  "request": {
-    "method": "GET",
-    "url": "https://example.com/api/v2/me",
-    "body": null
-  },
-  "response": {
-    "status": 200,
-    "body": {
-      "user": {
-        "id": 1,
-        "name": "test"
-      }
+  "endpoints": [
+    {
+      "id": "1",
+      "domain": "example.com",
+      "method": "GET",
+      "path": "/api/v2/me"
     }
-  }
+  ]
 }
 ```
 
@@ -190,6 +176,14 @@ To further filter by path and method:
 
 ```
 cysu endpoints list --domain <domain> --path <path> --method <method>
+```
+
+By default, listing returns only `id`, `domain`, `method`, and `path`. To include
+the captured request and response, add `--full`; this requires either `--domain`
+or `--path` so the complete capture corpus cannot be loaded accidentally:
+
+```
+cysu endpoints list --domain <domain> --path <path> --full
 ```
 
 To list ALL captured endpoints:

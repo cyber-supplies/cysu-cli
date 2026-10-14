@@ -26,6 +26,13 @@ var endpointsResource = resource{
 				{name: "domain", placeholder: "regex", usage: "host regex (case-insensitive); use ^ and $ for an exact match"},
 				{name: "path", placeholder: "regex", usage: "stored templated path regex (case-sensitive); escape literal * as \\*"},
 				{name: "method", placeholder: "method", usage: "HTTP method (case-insensitive)"},
+				{name: "full", boolean: true, usage: "include captured request and response; requires --domain or --path"},
+			},
+			validate: func(v flagValues) error {
+				if v.enabled("full") && v["domain"] == "" && v["path"] == "" {
+					return cliError{message: "endpoints list: --full requires --domain or --path", exit: exitUsage}
+				}
+				return nil
 			},
 			run: listEndpoints,
 		},
@@ -54,6 +61,9 @@ func listEndpoints(v flagValues) error {
 		if value := v[name]; value != "" {
 			query.Set(name, value)
 		}
+	}
+	if v.enabled("full") {
+		query.Set("full", "true")
 	}
 	path := apiPath("endpoints")
 	if len(query) > 0 {

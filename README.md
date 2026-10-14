@@ -64,7 +64,7 @@ JavaScript:
   cysu javascript clear
 
 Endpoints:
-  cysu endpoints list [--domain <domain] [--path <path>] [--method <method>]
+  cysu endpoints list [--domain <domain>] [--path <path>] [--method <method>] [--full]
 
   cysu endpoints list-scope
 
