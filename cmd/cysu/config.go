@@ -20,6 +20,10 @@ type config struct {
 	// endpoint, saved by `cysu oob create` and read by `cysu oob pull-hits`
 	// (see oob.go). A user has at most one at a time, so one field is enough.
 	OOB string `json:"oob,omitempty"`
+
+	// ProxyInstalled records that `cysu proxy install` completed successfully.
+	// It contains no proxy credentials or other sensitive configuration.
+	ProxyInstalled bool `json:"proxyInstalled,omitempty"`
 }
 
 // configPath returns the location of the settings file: config.json in the
@@ -105,4 +109,29 @@ func currentOOB() (string, error) {
 		return "", err
 	}
 	return cfg.OOB, nil
+}
+
+// ---------------------------------------------------------------------------
+// Proxy installation
+// ---------------------------------------------------------------------------
+
+// setProxyInstalled records whether the proxy installation completed.
+func setProxyInstalled(installed bool) error {
+	cfg, err := readConfig()
+	if err != nil {
+		return err
+	}
+	cfg.ProxyInstalled = installed
+	_, err = writeConfig(cfg)
+	return err
+}
+
+// proxyInstalled returns the proxy installation state saved in the config.
+// A missing config or field is treated as not installed by readConfig.
+func proxyInstalled() (bool, error) {
+	cfg, err := readConfig()
+	if err != nil {
+		return false, err
+	}
+	return cfg.ProxyInstalled, nil
 }

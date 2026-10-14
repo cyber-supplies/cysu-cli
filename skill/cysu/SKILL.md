@@ -34,38 +34,64 @@ cysu storage list [--dir <dir>]
 To upload and download files from the storage:
 
 ```
-cysu storage upload --file <localFile> --path <storagePath>
+cysu storage upload --file ./report.txt --path docs/report.txt
 
 {
   "success": true,
-  "id": "dG1wL3Rlc3Q",
-  "path": "<storagePath>",
+  "id": "ZG9jcy9yZXBvcnQudHh0",
+  "path": "docs/report.txt",
   "size": 6
 }
 
-cysu storage download --path <storagePath> --output <localFile>
+cysu storage download --path docs/report.txt --output ./report.txt
 
 {
   "success": true,
-  "id": "dG1wL3Rlc3Q",
-  "path": "<storagePath>",
-  "output": "<localFile>",
+  "id": "ZG9jcy9yZXBvcnQudHh0",
+  "path": "docs/report.txt",
+  "output": "/home/user/report.txt",
   "size": 6,
   "encrypted": true
 }
 ```
 
-To read a stored file without writing it to disk:
+When downloading, 'path' may be a directory. To read a stored file without writing it to disk:
 
 ```
-cysu storage read --path <storagePath>
+cysu storage read --path docs/report.txt
 
 {
-  "data": "<base64>"
+  "data": "cmVwb3J0"
 }
 ```
 
 **Important** - The contents are base64 encoded, because a stored file may be binary. To print the raw contents, decode it first.
+
+```
+cysu storage read --path docs/report.txt | jq -r '.data' | base64 --decode
+```
+
+## Proxy
+
+A proxy may be installed on your system to help with JavaScript and Endpoint collection. To check if it is installed:
+
+```
+cysu proxy status
+
+{
+  "installed": true
+}
+```
+
+When the proxy is installed, system commands like cURL will automatically be routed via the proxy. This means endpoints and javascript are automatically collected.
+
+To setup the proxy with Playwright or another browser tool, use the configuration:
+
+```
+- Server: `https://proxy.cybersupplies.app:443`
+- Username: `cysu`
+- Password: ${CYSU_TOKEN}
+```
 
 ## JavaScript
 
@@ -74,22 +100,21 @@ Used for collecting and downloading the JavaScript from the target.
 First, check what has been collected so far, optionally filtered by domain, without downloading it:
 
 ```
-cysu javascript list  [--domain <target-domain>]
+cysu javascript list --domain example.com
 
 [
   {
     "path": "example.com/static/app.js",
     "updatedAt": "2026-09-25T10:00:00.000Z",
     "status": "current"
-  },
-  ...
+  }
 ]
 ```
 
 If you are missing key files, submit one or more URLs for processing. The best URLs to use are main JavaScript files, which are often held on a separate CDN domain:
 
 ```
-cysu javascript add  --url <url> [--url <url>...]
+cysu javascript add --url https://cdn.example.com/assets/index.js
 
 {
   "success": true,
@@ -102,13 +127,13 @@ cysu javascript add  --url <url> [--url <url>...]
 The JavaScript files for a domain can then be downloaded with the following:
 
 ```
-cysu javascript download  --domain <target-domain>
+cysu javascript download --domain example.com
 
 {
   "success": true,
   "domain": "example.com",
-  "output": "/home/user/cysu-js/example.com",
-  "manifest": "/home/user/cysu-js/example.com/manifest.jsonl",
+  "output": "/home/user/cysu/js/example.com",
+  "manifest": "/home/user/cysu/js/example.com/manifest.jsonl",
   "files": 31,
   "size": 2483910
 }
@@ -119,7 +144,7 @@ cysu javascript download  --domain <target-domain>
 The files will then automatically be stored in this directory structure:
 
 ```
-~/cysu-js/
+~/cysu/js/
   <domain>/           # One directory per domain
     manifest.jsonl
     <url_path>/
@@ -142,26 +167,28 @@ Each domain directory holds a `manifest.jsonl`, which indexes the collection as 
 To extract all the unique keys:
 
 ```
-jq -r 'select(.type == "match") | .kind' ~/cysu-js/example.com/manifest.jsonl | sort -u 
+jq -r 'select(.type == "match") | .kind' ~/cysu/js/example.com/manifest.jsonl | sort -u
 ```
 
 To pull the unique values for a specific kind of match (url_search_params in the example):
 
 ```
-jq -r 'select(.type == "match" and .kind == "url_search_params") | .value' ~/cysu-js/example.com/manifest.jsonl
+jq -r 'select(.type == "match" and .kind == "url_search_params") | .value' ~/cysu/js/example.com/manifest.jsonl
 ```
 
 ## Endpoints
 
-Endpoints are saved from a proxy as agents work on the application. To list all the currently captured endpoints on a domain:
+Endpoints are saved from the proxy as agents work on the application. Only 200->399 responses status codes are saved.
+
+To list all the currently captured endpoints:
 
 ```
-cysu endpoints list --domain <domain>
+cysu endpoints list --domain '^example\.com$'
 
 {
   "endpoints": [
     {
-      "id": "1",
+      "id": "971ced69-ff4e-44f9-973a-a9764a29d973",
       "domain": "example.com",
       "method": "GET",
       "path": "/api/v2/me"
@@ -178,21 +205,39 @@ To further filter by path and method:
 cysu endpoints list --domain <domain> --path <path> --method <method>
 ```
 
-By default, listing returns only `id`, `domain`, `method`, and `path`. To include
-the captured request and response, add `--full`; this requires either `--domain`
-or `--path` so the complete capture corpus cannot be loaded accidentally:
-
-```
-cysu endpoints list --domain <domain> --path <path> --full
-```
-
-To list ALL captured endpoints:
-
-```
-cysu endpoints list
-```
-
 **Important** - The parameters 'domain' and 'path' are regex strings, by default matching on strings containing the regex. I.e 'example', will match domains 'example.com' or 'example2.com'
+
+To show the request/response pairs on each endpoint, include the flag 'full'. A domain OR path must be specified to do this:
+
+```
+cysu endpoints list --domain '^www\.example\.com$' --path '^/api/orgs/\*/admins$' --full
+
+{
+  "endpoints": [
+    {
+      "id": "48114cb0-bbec-40b5-9fd2-d48ef2c7687f",
+      "domain": "www.example.com",
+      "method": "GET",
+      "path": "/api/orgs/*/admins",
+      "request": {
+        "method": "GET",
+        "url": "https://www.example.com/api/orgs/12345/admins",
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "admins": [
+            "test"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**Important** - The 'body' parameter is a JSON object that represents the data returned by the API. The '*' character represents a path parameter, such as an ID or numeric value. It is advised NOT to print the full output with the request/responses into your context, as the it may be very large.
 
 Endpoints are only saved on in-scope domains, to view the current scope:
 
@@ -225,7 +270,7 @@ cysu accounts list [--location <location>]
 
 [
   {
-    "id": "acc_01k7example000000000000000",
+    "id": "acc_01m4x1fzk6ek5bsmjq2q0jj6kc",
     "username": "alice@example.com",
     "location": "https://example.com/login"
   }
@@ -235,21 +280,19 @@ cysu accounts list [--location <location>]
 Location is a regex string, which is recommended for searching. Omitting it lists every account. To retrieve the authentication details for a particular account:
 
 ```
-cysu accounts get --account <account>
+cysu accounts get --account acc_01m4x1fzk6ek5bsmjq2q0jj6kc
 
 {
-  "id": "acc_01k7example000000000000000",
+  "id": "acc_01m4x1fzk6ek5bsmjq2q0jj6kc",
   "username": "alice@example.com",
   "password": "12345",
   "location": "https://example.com/login",
   "cookie": "session=12345",
-  "updatedAt": "2006-10-13T12:00:00.000Z"
+  "updatedAt": "2026-10-13T12:00:00.000Z"
 }
 ```
 
 **Important** - This returns live credentials. It is advised to not print out this output directly into your context.
-
-Passwords and cookies are encrypted before leaving the CLI and decrypted locally in command output; the backend only stores ciphertext.
 
 Cookie may be null, it is filled in when another agent completes the login flow. If cookie is null, use username and password to login. Commit the cookie after with:
 
@@ -269,8 +312,8 @@ To create an out-of-bounds URL:
 cysu oob create
 
 {
-  "id": "<urlId>",
-  "url": "https://<urlId><nonce>.cybersupplies.site"
+  "id": "abcdefghijklmnopqrst",
+  "url": "https://abcdefghijklmnopqrstuvwxy12345678.cybersupplies.site"
 }
 ```
 
@@ -306,7 +349,7 @@ cysu email accounts
 [
   {
     "id": "example",
-    "email": "example
+    "email": "analyst@example.com"
   }
 ]
 ```

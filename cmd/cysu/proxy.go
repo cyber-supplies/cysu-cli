@@ -65,6 +65,12 @@ var proxyResource = resource{
 				return installProxy()
 			},
 		},
+		{
+			name: "status",
+			run: func(flagValues) error {
+				return printProxyStatus()
+			},
+		},
 	},
 }
 
@@ -110,6 +116,9 @@ func installProxy() error {
 	if err := writeProxyEnvironment(proxyURL); err != nil {
 		return err
 	}
+	if err := setProxyInstalled(true); err != nil {
+		return failf("saving proxy installation status: %v", err)
+	}
 
 	// A URL with the credentials stripped, safe to print.
 	safeProxyURL := (&url.URL{Scheme: "https", Host: host}).String()
@@ -129,6 +138,19 @@ func installProxy() error {
 		EnvironmentFile: envFile,
 		Note:            "open a new login session for the proxy environment to take effect",
 	})
+}
+
+// printProxyStatus reports the installation state recorded by the most recent
+// successful `cysu proxy install`. It deliberately returns no configuration or
+// credentials, so callers can safely inspect or pipe the result.
+func printProxyStatus() error {
+	installed, err := proxyInstalled()
+	if err != nil {
+		return err
+	}
+	return printJSON(struct {
+		Installed bool `json:"installed"`
+	}{Installed: installed})
 }
 
 // proxyHost returns the proxy host (optionally host:port), honouring the
