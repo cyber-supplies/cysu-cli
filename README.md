@@ -71,6 +71,13 @@ Endpoints:
   cysu endpoints add-scope --scope <regex>
   cysu endpoints set-scope --scope <regex>
 
+Notes:
+  cysu notes list [--domain <regex>] [--path <regex>]
+
+  cysu notes create --domain <domain> [--path <path>] --content <content>
+  cysu notes modify --note <note> [--domain <domain>] [--path <path>] [--content <content>]
+  cysu notes delete --note <note>
+
 Email:
   cysu email accounts
   cysu email list --account <accountsId> 
@@ -111,6 +118,22 @@ Account passwords and cookies are encrypted locally with the CLI master key befo
 decrypted only when an account is returned. The backend stores opaque ciphertext. `accounts list`
 never returns credentials; its optional location value is a PostgreSQL regular expression. Create,
 modify, and remove require a USER token, while USER and LLM tokens may list, get, and set cookies.
+
+Notes are short pieces of text (at most 500 characters) that an agent keeps about a domain and,
+optionally, a path on it, for example `cysu notes create --domain example.com --path /login
+--content "Uses JWT"`. A domain and path can have any number of notes. Domains are stored in
+lowercase; a note created without `--path` applies to the whole domain and has an empty path.
+Content is encrypted at rest by the storage service. USER and LLM tokens can use every notes command.
+
+`notes list` without flags returns all of your notes, oldest first. `--domain` (case-insensitive)
+and `--path` (case-sensitive) are PostgreSQL regular expressions that match anywhere unless
+anchored, so `--domain example.com` also matches `api.example.com`. Use
+`--domain '^example\.com$'` for an exact domain and `--path '^$'` for notes without a path. Quote
+patterns so the shell leaves them unchanged.
+
+`notes modify` changes only the fields you pass and keeps the rest. It cannot clear a path; delete
+the note and create it again instead. To find the note it lists all of your notes, since the API
+has no single-note lookup. `notes delete` prints the deleted note's id.
 
 ## Authentication
 
