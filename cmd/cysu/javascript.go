@@ -124,12 +124,17 @@ func listJavascript(domain string) error {
 		}
 		body["domain"] = domain
 	}
-	return request("POST", apiPath("javascript", "list"), body)
+	raw, err := sendWithTimeout("POST", apiPath("javascript", "list"), body, 2*time.Minute)
+	if err != nil {
+		return err
+	}
+	printResponse(raw)
+	return nil
 }
 
 // downloadJavascript asks the backend for a link to the domain's collection,
 // fetches the archive and unpacks it under the user's home directory. The
-// archive is held in memory: the service caps an export at 100 MB.
+// archive is held in memory, so large exports can use substantial RAM.
 func downloadJavascript(domain string) error {
 	base, root, err := collectionPaths(domain)
 	if err != nil {

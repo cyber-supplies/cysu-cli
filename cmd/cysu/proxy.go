@@ -116,7 +116,7 @@ func installProxy() error {
 	if err := writeProxyEnvironment(proxyURL); err != nil {
 		return err
 	}
-	if err := setProxyInstalled(true); err != nil {
+	if err := recordProxyInstall(proxyInstallRecordFile); err != nil {
 		return failf("saving proxy installation status: %v", err)
 	}
 
@@ -140,17 +140,21 @@ func installProxy() error {
 	})
 }
 
-// printProxyStatus reports the installation state recorded by the most recent
-// successful `cysu proxy install`. It deliberately returns no configuration or
-// credentials, so callers can safely inspect or pipe the result.
+// printProxyStatus checks the machine-wide installation, independently of the
+// caller's home directory. It never returns the proxy credentials.
 func printProxyStatus() error {
-	installed, err := proxyInstalled()
+	status := inspectProxyStatus(envFile, trustStores, os.Getenv)
+	recorded, err := proxyInstallRecorded(proxyInstallRecordFile)
 	if err != nil {
 		return err
 	}
 	return printJSON(struct {
-		Installed bool `json:"installed"`
-	}{Installed: installed})
+		Installed     bool   `json:"installed"`
+		InstallCalled bool   `json:"install_called"`
+		Active        bool   `json:"active"`
+		Proxy         string `json:"proxy,omitempty"`
+		Detail        string `json:"detail,omitempty"`
+	}{status.Installed, recorded || status.Installed, status.Active, status.Proxy, status.Detail})
 }
 
 // proxyHost returns the proxy host (optionally host:port), honouring the
