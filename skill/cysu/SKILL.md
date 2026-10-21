@@ -416,3 +416,57 @@ cysu email read --account <accountId> --email <emailId>
   "attachments": []
 }
 ```
+
+## Notes
+
+Notes are a way to store short, concise information about a part of the application. They are scoped by domain, and optionally by path. There is a 200 character limit per note. To create a note:
+
+```
+cysu notes create --domain 'example.com [--path <path>] --content <content>
+
+{
+  "id": "note_01m5fet0rbfvgv96mp048mvm9h",
+  "domain": "example.com",
+  "path": "",
+  "createdAt": "2026-10-21T14:45:54.163Z",
+  "content": "Test"
+}
+```
+
+To read notes currently on a domain or path:
+
+```
+cysu notes list [--domain <domain>] [--path <path>]
+
+[
+  {
+    "id": "note_01m5fet0rbfvgv96mp048mvm9h",
+    "domain": "example.com",
+    "path": "",
+    "createdAt": "2026-10-21T14:45:54.163Z",
+    "content": "Test"
+  }
+]
+```
+
+**Important** - 'domain and 'path' are regex matching filters. To find notes within a specific pattern, use regex to filter.
+
+To modify the contents of an existing note, or delete it:
+
+```
+cysu notes modify --note <noteId> [--domain <domain>] [--path <path>] [--content <content>]
+
+{
+  "id": "note_01m5fetrp0fkzaccm4ytcv3w05",
+  "domain": "example.com",
+  "path": "/testy2",
+  "createdAt": "2026-10-21T14:46:18.049Z",
+  "content": "Test2"
+}
+
+cysu notes delete --note <noteId>
+
+{
+  "id": "note_01m5fetrp0fkzaccm4ytcv3w05"
+}
+```
