@@ -52,10 +52,11 @@ Usage:
   cysu <resource> <action> [flags]
 
 Storage:
-  cysu storage list [--project <id>] [--dir <dir>]
-  cysu storage upload [--project <id>] --file <local> --path <path>
-  cysu storage download [--project <id>] --path <path> --output <local>
-  cysu storage read [--project <id>] --path <path>
+  cysu storage list [--dir <dir>]
+  cysu storage upload --file <local> --path <path>
+  cysu storage download --path <path> --output <local>
+  cysu storage read --path <path>
+  cysu storage delete --path <path>
 
 JavaScript:
   cysu javascript add --url <url> [--url <url>...]

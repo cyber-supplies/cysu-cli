@@ -71,6 +71,17 @@ cysu storage read --path docs/report.txt
 cysu storage read --path docs/report.txt | jq -r '.data' | base64 --decode
 ```
 
+To delete one stored file by its exact path:
+
+```
+cysu storage delete --path docs/report.txt
+
+{
+  "id": "ZG9jcy9yZXBvcnQudHh0",
+  "path": "docs/report.txt"
+}
+```
+
 ## Proxy
 
 A proxy may be installed on your system to help with JavaScript and Endpoint collection. To check if it is installed:
