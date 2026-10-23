@@ -1,15 +1,16 @@
-# Release publishes @cyber-supplies/cysu to GitHub Packages when a version
+# Release publishes @cyber-supplies/cysu publicly to npmjs when a version
 # tag is pushed:
 #
 #   git tag v0.1.1 && git push origin v0.1.1
 #
 # The tag is the version: v0.1.1 publishes 0.1.1. The version field in
 # npm/package.json is overwritten on the runner and never committed, so the
-# tag is the single source of truth. GitHub Packages refuses to overwrite a
-# published version, so a re-run of the same tag fails at the publish step.
+# tag is the single source of truth. npm refuses to overwrite a published
+# version, so a re-run of the same tag fails at the publish step.
 #
-# The workflow's own GITHUB_TOKEN does the publishing. No personal token is
-# stored, and the package inherits the repository's visibility.
+# Add a granular npm access token with publish access to the @cyber-supplies
+# scope and bypass 2FA enabled as the repository secret NPM_TOKEN. The package
+# is public even if the source repository remains private.
 
 name: Release
 
@@ -20,7 +21,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   publish:
@@ -32,12 +32,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Writes the .npmrc that points the @cyber-supplies scope at GitHub
-      # Packages and reads the token from NODE_AUTH_TOKEN.
+      # Writes an .npmrc for the public npm registry and NODE_AUTH_TOKEN.
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
-          registry-url: https://npm.pkg.github.com
+          registry-url: https://registry.npmjs.org
           scope: "@cyber-supplies"
 
       - name: Vet
@@ -60,6 +59,6 @@ jobs:
         run: npm pack --dry-run ./npm
 
       - name: Publish
-        run: npm publish ./npm
+        run: npm publish ./npm --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
