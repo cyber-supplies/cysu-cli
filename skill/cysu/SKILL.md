@@ -313,41 +313,6 @@ cysu accounts set-cookie --account <account> --cookie <cookie>
 
 If cookie is not null, check it's validity, and reference it's updatedAt time, as it may be expired. If it is, refresh with the login, and apply the new cookie for future agents.
 
-## Out-of-Bounds
-
-Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled.
-
-To create an out-of-bounds URL:
-
-```
-cysu oob create
-
-{
-  "id": "abcdefghijklmnopqrst",
-  "url": "https://abcdefghijklmnopqrstuvwxy12345678.cybersupplies.site"
-}
-```
-
-**Important** - Only ONE URL can be active at a time. Creating a new URL deregisters the previous one AND clears its locally stored hits.
-
-To read the hits from the currently active URL:
-
-```
-cysu oob pull-hits
-
-[
-  {
-    "protocol": "https",
-    "raw-request": "GET /probe HTTP/1.1\r\nHost: <hostname>\r\n\r\n",
-    "raw-response": "<HTTP response>",
-    "remote-address": "203.0.113.10",
-    "timestamp": "2026-09-14T12:34:56.123456789Z"
-  }
-]
-```
-
-This returns the FULL history of every hit seen so far, and is safe to call repeatedly. Each call also fetches any new hits and adds them. An empty array `[]` means no hits have arrived yet.
-
 ## Email
 
 Used for accessing information via email, e.g OTP links, password resets, or confirmations. Does not currently support sending emails.

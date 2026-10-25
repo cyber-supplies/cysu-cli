@@ -4,10 +4,19 @@ This is the CLI the agent and user use for interacting with our backend.
 
 ## Installing
 
+
+Via the repo:
+
 ```
 git clone https://github.com/cyber-supplies/cysu-cli.git
 cd cysu-cli
 cat install.sh | sh
+```
+
+Through the API:
+
+```
+curl -fsSL https://cysu-gateway-670100724771.europe-west1.run.app/install.sh | sh
 ```
 
 ## Build From Source
@@ -35,13 +44,11 @@ git push origin v0.1.{VERSION_NUMBER}
 gh run watch --exit-status
 ```
 
-The tag is the version. The workflow builds and publishes `@cyber-supplies/cysu` to GitHub Packages, and stamps the tag into the binary so that `cysu help` reports it. A build from source reports `dev`.
-
 ## Environment Variables
 
 `CYSU_TOKEN` - Supplies the API token.
 
-`CYSU_PROVIDER` - The default provider for profile installation: `AGENTS`, `CLAUDE`, or `CODEX`.
+`CYSU_PROVIDER` - The default provider: `AGENTS`, `CLAUDE`, or `CODEX`.
 
 ## Usage
 
@@ -105,36 +112,11 @@ Accounts:
   cysu accounts modify --account <account> [--username <user>] [--password <pass>] [--location <location>]
   cysu accounts remove --account <account>
 
-Out-of-Bounds:
-  cysu oob create
-  cysu oob pull-hits
-
 Key:
   cysu key init [--force]
   cysu key path
   cysu key verify
 ```
-
-Account passwords and cookies are encrypted locally with the CLI master key before upload and
-decrypted only when an account is returned. The backend stores opaque ciphertext. `accounts list`
-never returns credentials; its optional location value is a PostgreSQL regular expression. Create,
-modify, and remove require a USER token, while USER and LLM tokens may list, get, and set cookies.
-
-Notes are short pieces of text (at most 500 characters) that an agent keeps about a domain and,
-optionally, a path on it, for example `cysu notes create --domain example.com --path /login
---content "Uses JWT"`. A domain and path can have any number of notes. Domains are stored in
-lowercase; a note created without `--path` applies to the whole domain and has an empty path.
-Content is encrypted at rest by the storage service. USER and LLM tokens can use every notes command.
-
-`notes list` without flags returns all of your notes, oldest first. `--domain` (case-insensitive)
-and `--path` (case-sensitive) are PostgreSQL regular expressions that match anywhere unless
-anchored, so `--domain example.com` also matches `api.example.com`. Use
-`--domain '^example\.com$'` for an exact domain and `--path '^$'` for notes without a path. Quote
-patterns so the shell leaves them unchanged.
-
-`notes modify` changes only the fields you pass and keeps the rest. It cannot clear a path; delete
-the note and create it again instead. To find the note it lists all of your notes, since the API
-has no single-note lookup. `notes delete` prints the deleted note's id.
 
 ## Authentication
 
