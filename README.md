@@ -4,20 +4,21 @@ This is the CLI the agent and user use for interacting with our backend.
 
 ## Installing
 
+On Linux or macOS, run the installer. Node.js (npm and npx) and git are required:
 
-Via the repo:
-
-```
-git clone https://github.com/cyber-supplies/cysu-cli.git
-cd cysu-cli
-cat install.sh | sh
-```
-
-Through the API:
-
-```
+```sh
 curl -fsSL https://cysu-gateway-670100724771.europe-west1.run.app/install.sh | sh
 ```
+
+On Windows PowerShell, install the CLI with npm and the agent skill from a local checkout:
+
+```powershell
+npm install -g @cyber-supplies/cysu
+git clone https://github.com/cyber-supplies/cysu-cli.git
+npx -y skills add .\cysu-cli -g
+```
+
+Set `CYSU_TOKEN`, run `cysu key init`, then use `cysu debug check` to check the token and gateway. `cysu proxy install` is supported only on Linux.
 
 ## Build From Source
 
@@ -28,19 +29,12 @@ go vet ./... 2>&1 && go build -o cysu ./cmd/cysu 2>&1 && echo "BUILD OK"
 
 ## Releasing
 
-To set authentication using github CLI:
+The repository secret `NPM_TOKEN` must be a granular npm token with permission to publish to the `@cyber-supplies` scope and bypass 2FA. A new version tag builds Linux, macOS, and Windows binaries for x64 and arm64, checks the generated npm packages on native runners, and publishes the platform packages before `@cyber-supplies/cysu`. npm will not overwrite an existing version.
 
-```
-npm config set @cyber-supplies:registry https://npm.pkg.github.com
-npm config set //npm.pkg.github.com/:_authToken "$(gh auth token)"
-```
-
-To create a release:
-
-```
+```sh
 git checkout main && git pull
-git tag -a v0.3.{VERSION_NUMBER} -m "v0.3.{VERSION_NUMBER}"
-git push origin v0.1.{VERSION_NUMBER}
+git tag -a v0.5.0 -m "v0.5.0"
+git push origin v0.5.0
 gh run watch --exit-status
 ```
 
@@ -129,5 +123,5 @@ export CYSU_TOKEN=sk-xxxx
 It is also possible to pass the token directly via a CLI flag:
 
 ```
-cysu projects list --token sk-xxxx
+cysu debug check --token sk-xxxx
 ```

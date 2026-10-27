@@ -1,17 +1,5 @@
-# Release publishes @cyber-supplies/cysu publicly to npmjs when a version
-# tag is pushed:
-#
-#   git tag v0.1.1 && git push origin v0.1.1
-#
-# The tag is the version: v0.1.1 publishes 0.1.1. The version field in
-# npm/package.json is overwritten on the runner and never committed, so the
-# tag is the single source of truth. npm refuses to overwrite a published
-# version, so a re-run of the same tag fails at the publish step.
-#
-# Add a granular npm access token with publish access to the @cyber-supplies
-# scope and bypass 2FA enabled as the repository secret NPM_TOKEN. The package
-# is public even if the source repository remains private.
-
+# A version tag builds six native binaries and publishes the platform packages
+# before the @cyber-supplies/cysu launcher. npm versions cannot be overwritten.
 name: Release
 
 on:
@@ -23,42 +11,81 @@ permissions:
   contents: read
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      # Writes an .npmrc for the public npm registry and NODE_AUTH_TOKEN.
       - uses: actions/setup-node@v7
         with:
-          node-version: lts/*
-          registry-url: https://registry.npmjs.org
-          scope: "@cyber-supplies"
+          node-version: "24"
 
       - name: Vet
         run: go vet ./...
 
-      - name: Build linux/amd64 binary into the package
-        env:
-          CGO_ENABLED: "0"
-          GOOS: linux
-          GOARCH: amd64
+      - name: Build native binaries
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: v2.19.0
+          args: build --clean
+
+      - name: Generate npm packages
         run: |
-          go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME#v}" -o npm/bin/cysu ./cmd/cysu
-          ./npm/bin/cysu help
+          npx --yes goreleaser-npm-publisher@1.7.0 build --clear \
+            --builder cysu \
+            --name cysu \
+            --bin cysu \
+            --prefix @cyber-supplies \
+            --repository https://github.com/cyber-supplies/cysu-cli \
+            --description "Cyber Supplies CLI" \
+            --license UNLICENSED
 
-      - name: Set package version from the tag
-        working-directory: npm
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/npm/
+          if-no-files-found: error
 
-      - name: Show tarball contents
-        run: npm pack --dry-run ./npm
+  verify:
+    needs: build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/npm/
+      - name: Check npm package and launch cysu
+        run: node scripts/verify-npm-package.mjs
 
-      - name: Publish
-        run: npm publish ./npm --access public
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          scope: "@cyber-supplies"
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/npm/
+      - name: Publish platform packages, then launcher
+        run: node scripts/publish-npm.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
