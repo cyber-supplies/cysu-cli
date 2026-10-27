@@ -1,0 +1,39 @@
+name: Verify npm installation
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published cysu version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Install from npm and run cysu
+        shell: bash
+        env:
+          CYSU_VERSION: ${{ inputs.version }}
+        run: |
+          for attempt in {1..30}; do
+            if npm install -g "@cyber-supplies/cysu@$CYSU_VERSION" --registry=https://registry.npmjs.org \
+              && cysu help >cysu-help.txt 2>&1 \
+              && grep -F "cysu $CYSU_VERSION" cysu-help.txt; then
+              exit 0
+            fi
+            echo "npm package is not installable yet (attempt $attempt); retrying in 30 seconds"
+            sleep 30
+          done
+          exit 1
