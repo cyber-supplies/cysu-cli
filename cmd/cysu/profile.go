@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -39,6 +40,7 @@ var profileResource = resource{
 		{name: "remove", flags: []flagSpec{profileNameFlag}, run: func(v flagValues) error {
 			return request("DELETE", apiPath("profiles", v["profile"]), nil)
 		}},
+		{name: "clear", local: true, run: func(flagValues) error { return clearLocalProfiles() }},
 		{name: "create", local: true, flags: []flagSpec{profileNameFlag, {name: "example", boolean: true, usage: "populate one sample skill, agent, MCP server, and prompt"}}, run: func(v flagValues) error {
 			return createProfile(v["profile"], v.enabled("example"))
 		}},
@@ -81,6 +83,32 @@ var profileResource = resource{
 			run: func(v flagValues) error { return uninstallProfile(v["provider"], v["scope"]) },
 		},
 	},
+}
+
+// clearLocalProfiles empties the user's local editing directory while keeping
+// the directory itself. Symlinks inside it are removed without following them.
+func clearLocalProfiles() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("locating home directory: %w", err)
+	}
+	root := filepath.Join(home, "cysu", "profiles")
+	if err := profileEditNoLinks(root); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return printJSON(map[string]any{"removed": 0, "directory": root})
+	}
+	if err != nil {
+		return fmt.Errorf("reading local profiles: %w", err)
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(root, entry.Name())); err != nil {
+			return fmt.Errorf("removing local profile %q: %w", entry.Name(), err)
+		}
+	}
+	return printJSON(map[string]any{"removed": len(entries), "directory": root})
 }
 
 type storedAgent struct {
