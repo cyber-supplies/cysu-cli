@@ -19,6 +19,7 @@ import (
 
 // resources lists every command group, in the order they appear in the help.
 var resources = []resource{
+	engineResource,
 	javascriptResource,
 	endpointsResource,
 	notesResource,
@@ -26,7 +27,6 @@ var resources = []resource{
 	storageResource,
 	profileResource,
 	proxyResource,
-	oobResource,
 	emailResource,
 	keyResource,
 	debugResource,

@@ -1,8 +1,8 @@
 package main
 
-// config.go holds the CLI's current OOB correlation ID. The file lives next
-// to the master key (see keyfile.go) and is written atomically so a crash
-// cannot leave it half-written.
+// config.go holds local CLI settings. The file lives next to the master key
+// (see keyfile.go) and is written atomically so a crash cannot leave it
+// half-written.
 
 import (
 	"encoding/json"
@@ -16,10 +16,9 @@ const configFileName = "config.json"
 
 // config is the on-disk shape of the settings file.
 type config struct {
-	// OOB is the correlation id of the caller's current out-of-bounds
-	// endpoint, saved by `cysu oob create` and read by `cysu oob pull-hits`
-	// (see oob.go). A user has at most one at a time, so one field is enough.
-	OOB string `json:"oob,omitempty"`
+	// ProxyInstalled records that `cysu proxy install` completed successfully.
+	// It contains no proxy credentials or other sensitive configuration.
+	ProxyInstalled bool `json:"proxyInstalled,omitempty"`
 }
 
 // configPath returns the location of the settings file: config.json in the
@@ -82,27 +81,26 @@ func writeConfig(cfg config) (string, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Out-of-bounds endpoint
+// Proxy installation
 // ---------------------------------------------------------------------------
 
-// setOOB records id as the correlation id of the caller's current OOB
-// endpoint, so `cysu oob pull-hits` knows which endpoint to read.
-func setOOB(id string) error {
+// setProxyInstalled records whether the proxy installation completed.
+func setProxyInstalled(installed bool) error {
 	cfg, err := readConfig()
 	if err != nil {
 		return err
 	}
-	cfg.OOB = id
+	cfg.ProxyInstalled = installed
 	_, err = writeConfig(cfg)
 	return err
 }
 
-// currentOOB returns the saved OOB correlation id, or "" when none has been
-// created yet.
-func currentOOB() (string, error) {
+// proxyInstalled returns the proxy installation state saved in the config.
+// A missing config or field is treated as not installed by readConfig.
+func proxyInstalled() (bool, error) {
 	cfg, err := readConfig()
 	if err != nil {
-		return "", err
+		return false, err
 	}
-	return cfg.OOB, nil
+	return cfg.ProxyInstalled, nil
 }

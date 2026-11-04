@@ -47,6 +47,9 @@ const multiSep = "\x00"
 
 func (v flagValues) enabled(name string) bool { return v[name] == "true" }
 
+// provided distinguishes an omitted flag from an explicit empty or false value.
+func (v flagValues) provided(name string) bool { return v["provided:"+name] == "true" }
+
 // list returns every value given for a repeatable flag, in order.
 func (v flagValues) list(name string) []string {
 	if v[name] == "" {
@@ -87,10 +90,14 @@ type resource struct {
 func (r resource) usesAPI(c command) bool { return r.api && !c.local }
 
 // flags returns every flag c accepts within r: its own, plus --token for
-// commands that talk to the backend, plus --debug for all of them.
+// backend and engine commands, --engine for engine commands, and --debug
+// for all of them.
 func (r resource) flags(c command) []flagSpec {
 	flags := slices.Clone(c.flags)
-	if r.usesAPI(c) {
+	if r.name == "engine" {
+		flags = append(flags, engineFlag, tokenFlag)
+	}
+	if r.usesAPI(c) && r.name != "engine" {
 		flags = append(flags, tokenFlag)
 	}
 	return append(flags, debugFlag)
@@ -123,6 +130,11 @@ func (r resource) run(args []string) error {
 	// tracing on but never off.
 	if values.enabled("debug") {
 		setTracing(true)
+	}
+	if r.name == "engine" {
+		if err := enginePreflight(values, cmd.name != "auth" && cmd.name != "status"); err != nil {
+			return err
+		}
 	}
 
 	// API commands resolve their token and the master key before they touch
@@ -202,6 +214,7 @@ func (c command) parse(r resource, args []string) (flagValues, error) {
 	}
 
 	values := flagValues{}
+	fs.Visit(func(f *flag.Flag) { values["provided:"+f.Name] = "true" })
 	var missing []string
 	for _, f := range flags {
 		if f.boolean {
@@ -238,6 +251,16 @@ func (c command) parse(r resource, args []string) (flagValues, error) {
 	}
 	if len(missing) > 1 {
 		return nil, usageErrorf(usage, "%s: missing required flags %s", qualified, strings.Join(missing, ", "))
+	}
+	if r.name == "engine" {
+		if err := validateEngineURL(values); err != nil {
+			return nil, withUsage(err, usage)
+		}
+		if _, hasWorkflow := values["workflow"]; hasWorkflow {
+			if err := validateWorkflowID(values); err != nil {
+				return nil, withUsage(err, usage)
+			}
+		}
 	}
 	if c.validate != nil {
 		if err := c.validate(values); err != nil {
