@@ -389,6 +389,53 @@ cysu email read --account <accountId> --email <emailId>
 }
 ```
 
+## Notes [LLM]
+
+Notes allow you to store learnings about a website in a structured manner. They are broken down by domain, and optionally by path.
+
+**Important** - An individual note is limited to 350 characters. Make each note as short and concise as possible. If you need more space, add extra notes.
+
+To list notes currently written:
+
+```
+cysu notes list [--domain <regex>] [--path <regex>]
+
+[
+  {
+    "id": "note_01m5fet0rbfvgv96mp048mvm9h",
+    "domain": "example.com",
+    "path": "",
+    "createdAt": "2026-10-21T14:45:54.163Z",
+    "content": "Test"
+  }
+]
+```
+
+**Important** - Reading notes should be done by tuning the domain and path to the correct areas
+
+To create a note:
+
+```
+./cysu notes create --domain <domain> --content <content> [--path <path>]
+
+{
+  "id": "note_01m6kyb6hte2zazfntnd6za52a",
+  "domain": "example.com",
+  "path": "/test",
+  "createdAt": "2026-11-04T18:50:04.754Z",
+  "content": "test"
+}
+```
+
+To edit and remove a note:
+
+```
+cysu notes modify --note <note> [--domain <domain>] [--path <path>] [--content <content>]
+
+cysu notes delete --note <note>
+```
+
+
 ## Profiles [USER]
 
 Profiles allow a user to convert their methodology into repeatable LLM workflows that can be later instantiated on any machine. They consist of Skills, Prompts, MCP Servers, and Agents.
@@ -518,3 +565,170 @@ cysu profiles create --profile <id> [--example]
 The profile will not be created in Cyber Supplies until it is saved.
 
 ## Engine [USER]
+
+The engine allows running multi-profile workflows, where each profile runs inside of an isolated containe with cysu and security tools attached. 
+
+The engine is hosted on the user's infrastructure and must be configured. To check if the engine is configured and successfully configured:
+
+```
+cysu engine status
+
+{
+  "version": "0.2.0",
+  "docker": "29.9.3",
+  "image": "ghcr.io/cyber-supplies/cysu-engine-workspace:0.2.0",
+  "apiUrl": "https://cysu-gateway-670100724771.europe-west1.run.app",
+  "cysu": true,
+  "llm": {
+    "mode": "codex",
+    "ready": true
+  },
+  "configured": true
+}
+```
+
+If configured is false, or an error occurs, the engine is not available to use, and the user must set CYSU_ENGINE_URL, as well as run 'cysu engine auth --passphrase'. If the user has directly asked to use the engine, then do not attempt to bypass this issue, surface it immediately to the user.
+
+To list the current workflows in the engine:
+
+```
+cysu engine get-workflows
+
+[
+  {
+    "id": "8e4759b1-9998-4851-a717-2bd88dd1bfb1",
+    "name": "rexample",
+    "request": {
+      "globalProfile": "global",
+      "model": "GPT-5.6-sol",
+      "prompt": "",
+      "reasoningEffort": "high",
+      "stages": [
+        {
+          "profile": "recon"
+        },
+        {
+          "profile": "attack"
+        },
+        {
+          "profile": "triage"
+        }
+      ]
+    },
+    "createdAt": "2026-11-04T09:19:23.685Z",
+    "updatedAt": "2026-11-04T09:19:23.685Z"
+  }
+]
+```
+
+To create a workflow:
+
+```
+cysu engine create-workflow --name <name> [--prompt <text>] [--profile <id>] [--global-profile <id>] [--model <model>] [--reasoning-effort <effort>]
+
+{
+  "id": "1156627f-36cd-407f-ba5f-87b6df501b49",
+  "name": "example",
+  "request": {
+    "globalProfile": "global",
+    "model": "gpt-5.6-sol",
+    "prompt": "example",
+    "reasoningEffort": "high",
+    "stages": [
+      {
+        "profile": "attack"
+      }
+    ]
+  },
+  "createdAt": "2026-11-04T18:14:47.715Z",
+  "updatedAt": "2026-11-04T18:14:47.715Z"
+}
+```
+
+**Important** - Profile can be used multiple times. The workflow will be created with the profiles executing in the order provided.
+
+To delete or edit a workflow:
+
+```
+cysu engine delete-workflow --workflow <id>
+
+cysu engine edit-workflow --workflow [--name <name>] [--prompt <text>] [--profile <id>] [--global-profile <id>] [--model <model>] [--reasoning-effort <effort>]
+```
+
+To run a workflow, then get it's results:
+
+```
+cysu engine run --workflow <id>
+
+cysu engine get-run --run <id> [--cursor]
+
+{
+  "run": {
+    "id": "e1bfb412-8aa7-4e9e-8905-9ae31be624a0",
+    "name": "example",
+    "status": "succeeded",
+    "workspace": {
+      "id": "1156627f-36cd-407f-ba5f-87b6df501b49",
+      "name": "example"
+    },
+    "stages": [
+      {
+        "index": 0,
+        "profile": "example",
+        "tag": "",
+        "status": "succeeded"
+      }
+    ]
+  },
+  "items": [
+    {
+      "stage": 0,
+      "profile": "example",
+      "seq": 1,
+      "time": "2026-11-04T18:29:17.383Z",
+      "kind": "attempt",
+      "text": "initial (gpt-5.6-sol)"
+    },
+    {
+      "stage": 0,
+      "profile": "example",
+      "seq": 4,
+      "time": "2026-11-04T18:29:23.639Z",
+      "kind": "message",
+      "text": "I’m using the `cysu` skill because the workspace instructions require its storage workflow. I’ll first validate that the required objective fields exist; if any are unset, I’ll stop as instructed."
+    },
+  ],
+  "cursor": "1",
+  "done": true
+}
+```
+
+To list previous runs:
+
+```
+
+
+[
+  {
+    "id": "e1bfb412-8aa7-4e9e-8905-9ae31be624a0",
+    "status": "succeeded",
+    "createdAt": "2026-11-04T18:29:11.923Z",
+    "startedAt": "2026-11-04T18:29:11.926Z",
+    "finishedAt": "2026-11-04T18:29:32.401Z",
+    "cancelRequested": false,
+    "name": "example",
+    "globalProfile": "",
+    "model": "gpt-5.6-sol",
+    "reasoningEffort": "high",
+    "stageCount": 1,
+    "stages": [
+      {
+        "index": 0,
+        "profile": "attack",
+        "tag": "",
+        "status": "succeeded"
+      }
+    ]
+  }
+]
+```
