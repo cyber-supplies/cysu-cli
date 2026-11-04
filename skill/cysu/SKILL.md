@@ -5,7 +5,9 @@ description: Cyber Supplies CLI Instructions.
 
 # Cyber Supplies
 
-The CLI for Cyber Supplies (cysu), the autonomous security research infrastructure provider. 
+The CLI for Cyber Supplies (cysu), the autonomous security research infrastructure provider.
+
+Further documentation: https://docs.cybersupplies.app/
 
 ## Output
 
@@ -23,7 +25,23 @@ A modal response has been provided alongside each command. Use this to parse the
 
 Every command needs an API token. It is read from the `CYSU_TOKEN` environment variable, or from `--token <token>` on the command line. If the CLI reports a missing or rejected token, stop and ask the user for it.
 
-## Storage
+There are two authentication modes you may be in for the CLI, 'user' mode, or 'llm' mode. To verify which mode you are currently in:
+
+```
+cysu profiles list
+
+// LLM
+{"error":"Invalid token"}
+
+// User
+[
+  ...
+]
+```
+
+The user authentication can access all commands. LLM authentication can access only commands marked as 'llm'. Certain subcommands may be restricted as well if not documented here.
+
+## Storage [LLM]
 
 Storage is used for holding files in a persistent location, where it can be accessed across multiple devices/sessions. To list objects in the storage:
 
@@ -71,7 +89,7 @@ cysu storage read --path docs/report.txt
 cysu storage read --path docs/report.txt | jq -r '.data' | base64 --decode
 ```
 
-## Proxy
+## Proxy [LLM]
 
 A proxy may be installed on your system to help with JavaScript and Endpoint collection. To check if it is installed:
 
@@ -93,7 +111,7 @@ To setup the proxy with Playwright or another browser tool, use the configuratio
 - Password: ${CYSU_TOKEN}
 ```
 
-## JavaScript
+## JavaScript [LLM]
 
 Used for collecting and downloading the JavaScript from the target.
 
@@ -176,7 +194,7 @@ To pull the unique values for a specific kind of match (url_search_params in the
 jq -r 'select(.type == "match" and .kind == "url_search_params") | .value' ~/cysu/js/example.com/manifest.jsonl
 ```
 
-## Endpoints
+## Endpoints [LLM]
 
 Endpoints are saved from the proxy as agents work on the application. Only 200->399 responses status codes are saved.
 
@@ -261,7 +279,7 @@ cysu endpoints set-scope --scope 'example'
 
 **Important** - The scope parameter is a regex string, and will match any domains containing the string.
 
-## Accounts
+## Accounts [LLM]
 
 The user may provide you accounts to test the target. In order to list accounts you have access to:
 
@@ -302,42 +320,7 @@ cysu accounts set-cookie --account <account> --cookie <cookie>
 
 If cookie is not null, check it's validity, and reference it's updatedAt time, as it may be expired. If it is, refresh with the login, and apply the new cookie for future agents.
 
-## Out-of-Bounds
-
-Used for testing out-of-bounds (blind) attacks. Returns a public HTTPS URL containing a running InteractSH server, from which hits can be pulled.
-
-To create an out-of-bounds URL:
-
-```
-cysu oob create
-
-{
-  "id": "abcdefghijklmnopqrst",
-  "url": "https://abcdefghijklmnopqrstuvwxy12345678.cybersupplies.site"
-}
-```
-
-**Important** - Only ONE URL can be active at a time. Creating a new URL deregisters the previous one AND clears its locally stored hits.
-
-To read the hits from the currently active URL:
-
-```
-cysu oob pull-hits
-
-[
-  {
-    "protocol": "https",
-    "raw-request": "GET /probe HTTP/1.1\r\nHost: <hostname>\r\n\r\n",
-    "raw-response": "<HTTP response>",
-    "remote-address": "203.0.113.10",
-    "timestamp": "2026-09-14T12:34:56.123456789Z"
-  }
-]
-```
-
-This returns the FULL history of every hit seen so far, and is safe to call repeatedly. Each call also fetches any new hits and adds them. An empty array `[]` means no hits have arrived yet.
-
-## Email
+## Email [LLM]
 
 Used for accessing information via email, e.g OTP links, password resets, or confirmations. Does not currently support sending emails.
 
@@ -405,3 +388,133 @@ cysu email read --account <accountId> --email <emailId>
   "attachments": []
 }
 ```
+
+## Profiles [USER]
+
+Profiles allow a user to convert their methodology into repeatable LLM workflows that can be later instantiated on any machine. They consist of Skills, Prompts, MCP Servers, and Agents.
+
+To list the current profiles:
+
+```
+cysu profiles list     
+
+[
+  {
+    "id": "example",
+    "tag": [
+      "example-tag",
+      "1"
+    ]
+  }
+]
+```
+
+Profiles are edited by pulling the files onto the local machine, then pushing the changes/additions to Cyber Supplies. To pull a specific profile or all profiles:
+
+```
+cysu profiles edit [--profile <id>] [--all]
+
+// --profile
+
+{
+  "directory": "/home/jakubjn/cysu/profiles/example",
+  "items": 11,
+  "profile": "example",
+  "success": true
+}
+
+// --all
+
+{
+  "profiles": [
+    {
+      "directory": "/home/jakubjn/cysu/profiles/example",
+      "items": 11,
+      "profile": "example",
+      "success": true
+    }
+  ],
+  "success": true
+}
+
+```
+
+**Important** - This pulls the current profiles into ~/cysu/profiles, and override any current changes. The command '--all' will wipe the directory and replace it with the currently synced profiles.
+
+The directory ~/cysu/profiles expects the following structure:
+
+```
+/home/jakubjn/cysu/profiles
+└── <profile-name>
+    ├── agents
+    │   └── <agent-name>
+    │       └── AGENT.md
+    ├── mcp
+    │   └── <mcp-name>
+    │       └── settings.json
+    ├── prompts
+    │   └── <prompt-name>
+    │       └── AGENTS.md
+    ├── skills
+    │   └── <skill-name>
+    │       └── SKILL.md
+    └── tags.txt // New-line delimited tags
+```
+
+To save a profile after edits, or to save all profiles currently stored locally:
+
+```
+cysu profiles save [--profile <id>] [--all]
+
+// --profile
+
+{
+  "changes": {
+    "created": 0,
+    "deleted": 0,
+    "unchanged": 11,
+    "updated": 0
+  },
+  "directory": "/home/jakubjn/cysu/profiles/example",
+  "profile": "example",
+  "success": true
+}
+
+// --all
+
+{
+  "profiles": [
+    {
+      "changes": {
+        "created": 0,
+        "deleted": 0,
+        "unchanged": 11,
+        "updated": 0
+      },
+      "directory": "/home/jakubjn/cysu/profiles/example",
+      "profile": "example",
+      "success": true
+    }
+  ],
+  "success": true
+}
+```
+
+**Important** - Saving '--all' is destructive, any profile missing from the local sync will be removed from Cyber Supplies.
+
+To create a new profile, optionally with example data filled in:
+
+```
+cysu profiles create --profile <id> [--example]
+
+{
+  "directory": "/home/jakubjn/cysu/profiles/example",
+  "items": 4,
+  "profile": "example",
+  "success": true
+}
+```
+
+The profile will not be created in Cyber Supplies until it is saved.
+
+## Engine [USER]
