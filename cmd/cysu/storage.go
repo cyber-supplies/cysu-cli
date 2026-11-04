@@ -14,8 +14,10 @@ package main
 //	read      as download, but the contents are printed (base64) rather
 //	          than written to a local file
 //
+// Delete calls DELETE /storage/files/{fileId} after resolving the path.
+//
 // On the command line files are addressed by their storage path, which is
-// what the caller knows; download and read resolve it to a file id via the
+// what the caller knows; download, read, and delete resolve it to a file id via the
 // listing. The presigned URLs are used once and never printed.
 //
 // Contents are compressed with zstd and then encrypted with the master key
@@ -80,6 +82,15 @@ var storageResource = resource{
 			},
 			run: func(v flagValues) error {
 				return readFile(v["path"])
+			},
+		},
+		{
+			name: "delete",
+			flags: []flagSpec{
+				{name: "path", placeholder: "path", usage: "path of the file to delete from storage", required: true},
+			},
+			run: func(v flagValues) error {
+				return deleteFile(v["path"])
 			},
 		},
 	},
@@ -400,6 +411,25 @@ func readFile(remote string) error {
 	return printJSON(struct {
 		Data string `json:"data"`
 	}{base64.StdEncoding.EncodeToString(file.contents)})
+}
+
+// deleteFile resolves an exact storage path to its file ID. A directory
+// prefix never matches, so this command can only delete one file.
+func deleteFile(remote string) error {
+	raw, err := send("GET", apiPath("storage", "files"), nil)
+	if err != nil {
+		return err
+	}
+	files, err := decodeFileList(raw)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if samePath(file.Path, remote) {
+			return request("DELETE", apiPath("storage", "files", file.ID), nil)
+		}
+	}
+	return failf("no stored file at path %q; check `cysu storage list`", remote)
 }
 
 // writeAtomically streams r into a temporary file beside path and renames it

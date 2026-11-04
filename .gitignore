@@ -1,4 +1,5 @@
 /cmd/cysu/cysu
 /npm/bin
+/dist/
 /cysu
 .env

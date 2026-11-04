@@ -1,0 +1,19 @@
+version: 2
+
+builds:
+  - id: cysu
+    main: ./cmd/cysu
+    binary: cysu
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
