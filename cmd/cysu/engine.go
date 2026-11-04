@@ -15,7 +15,7 @@ import (
 )
 
 // enginePreflight checks engine authentication and fills a missing user token.
-// Only auth bypasses the readiness gate; passphrases are never synchronized here.
+// Auth and status bypass the readiness gate; passphrases are not synchronized here.
 func enginePreflight(v flagValues, requireAuth bool) error {
 	token := strings.TrimSpace(v["token"])
 	if token == "" {
@@ -27,35 +27,36 @@ func enginePreflight(v flagValues, requireAuth bool) error {
 	if !strings.HasPrefix(token, "usr_") {
 		return cliError{message: "engine commands require a Cyber Supplies user token starting with usr_; LLM tokens cannot access engine commands", exit: exitUsage}
 	}
-	raw, err := engineSend(v, http.MethodGet, "/api/settings", nil)
+	v["token"] = token
+	raw, status, err := engineSendWithStatus(v, http.MethodGet, "/api/status", nil)
+	if status == http.StatusUnauthorized {
+		var rejected struct {
+			SetupRequired bool `json:"setupRequired"`
+		}
+		if json.Unmarshal(raw, &rejected) != nil || !rejected.SetupRequired {
+			return err
+		}
+		if _, err = engineSend(v, http.MethodPut, "/api/settings", map[string]string{"token": token}); err != nil {
+			return err
+		}
+		raw, err = engineSend(v, http.MethodGet, "/api/status", nil)
+	}
 	if err != nil {
 		return err
 	}
-	var settings struct {
-		Token   *string `json:"token"`
-		Passkey string  `json:"passkey"`
-		LLM     struct {
-			Mode  string `json:"mode"`
-			Codex struct {
-				Saved bool `json:"saved"`
-			} `json:"codex"`
+	var state struct {
+		Cysu bool `json:"cysu"`
+		LLM  struct {
+			Ready bool `json:"ready"`
 		} `json:"llm"`
 	}
-	if err := json.Unmarshal(raw, &settings); err != nil || settings.Token == nil {
-		return failf("engine returned invalid credential settings")
+	if json.Unmarshal(raw, &state) != nil {
+		return failf("engine returned invalid status")
 	}
-	if requireAuth && (settings.Passkey == "" || settings.LLM.Mode != "codex" || !settings.LLM.Codex.Saved) {
+	if requireAuth && (!state.Cysu || !state.LLM.Ready) {
 		return cliError{message: "engine authentication is incomplete: run cysu engine auth --passphrase <passphrase> and complete the Codex sign-in before using engine commands", exit: exitUsage}
 	}
-	credentials := map[string]string{}
-	if *settings.Token == "" {
-		credentials["token"] = token
-	}
-	if len(credentials) == 0 {
-		return nil
-	}
-	_, err = engineSend(v, http.MethodPut, "/api/settings", credentials)
-	return err
+	return nil
 }
 
 // authEngine explicitly saves the supplied passphrase and initiates Codex
@@ -262,7 +263,7 @@ var engineResource = resource{
 			run: authEngine,
 		},
 		{
-			name: "get-status",
+			name: "status",
 			run: func(v flagValues) error {
 				return engineRequest(v, http.MethodGet, "/api/status", nil)
 			},
@@ -414,8 +415,7 @@ func workflowBody(v flagValues) map[string]any {
 	return map[string]any{"name": v["name"], "request": request}
 }
 
-// engineRequest sends JSON to the selected engine without gateway credentials
-// or an Origin header, then prints its JSON response unchanged in structure.
+// engineRequest sends JSON to the selected engine and prints its response.
 func engineRequest(v flagValues, method, path string, body any) error {
 	raw, err := engineSend(v, method, path, body)
 	if err != nil {
@@ -427,22 +427,30 @@ func engineRequest(v flagValues, method, path string, body any) error {
 
 // engineSend returns a response for commands that need to inspect it first.
 func engineSend(v flagValues, method, path string, body any) ([]byte, error) {
+	raw, _, err := engineSendWithStatus(v, method, path, body)
+	return raw, err
+}
+
+// engineSendWithStatus also returns the HTTP status so preflight can recognize
+// the engine's first-setup challenge without parsing a masked settings token.
+func engineSendWithStatus(v flagValues, method, path string, body any) ([]byte, int, error) {
 	var encoded []byte
 	var reader io.Reader
 	if body != nil {
 		var err error
 		encoded, err = json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("encoding engine request: %w", err)
+			return nil, 0, fmt.Errorf("encoding engine request: %w", err)
 		}
 		reader = bytes.NewReader(encoded)
 	}
 	endpoint := v["engine"] + path
 	req, err := http.NewRequest(method, endpoint, reader)
 	if err != nil {
-		return nil, fmt.Errorf("building engine request: %w", err)
+		return nil, 0, fmt.Errorf("building engine request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+v["token"])
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -455,22 +463,22 @@ func engineSend(v flagValues, method, path string, body any) ([]byte, error) {
 	if err != nil {
 		cause := transportError(err)
 		traceFailure(n, time.Since(start), cause)
-		return nil, failf("%s %s: %v", method, endpoint, cause)
+		return nil, 0, failf("%s %s: %v", method, endpoint, cause)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		traceFailure(n, time.Since(start), err)
-		return nil, fmt.Errorf("reading engine response: %w", err)
+		return nil, 0, fmt.Errorf("reading engine response: %w", err)
 	}
 	traceResponse(n, resp.StatusCode, time.Since(start), raw)
 	if resp.StatusCode >= 300 {
-		return nil, backendError(resp.StatusCode, raw)
+		return raw, resp.StatusCode, backendError(resp.StatusCode, raw)
 	}
 	if resp.StatusCode != http.StatusNoContent && !json.Valid(raw) {
-		return nil, failf("engine returned an invalid JSON response (HTTP %d)", resp.StatusCode)
+		return nil, resp.StatusCode, failf("engine returned an invalid JSON response (HTTP %d)", resp.StatusCode)
 	}
-	return raw, nil
+	return raw, resp.StatusCode, nil
 }
 
 // engineFlag supplies the engine address for each engine command. There is

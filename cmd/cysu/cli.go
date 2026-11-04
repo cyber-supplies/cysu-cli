@@ -132,7 +132,7 @@ func (r resource) run(args []string) error {
 		setTracing(true)
 	}
 	if r.name == "engine" {
-		if err := enginePreflight(values, cmd.name != "auth"); err != nil {
+		if err := enginePreflight(values, cmd.name != "auth" && cmd.name != "status"); err != nil {
 			return err
 		}
 	}
