@@ -21,7 +21,7 @@ cysu engine status
 
 If configured is false, report that setup is incomplete. Existing workflows and runs can still be inspected or managed, but starting a run requires completed authentication. Set CYSU_ENGINE_URL and use 'cysu engine auth --passphrase <passphrase>' to complete setup. Surface connection or authentication errors immediately rather than trying to bypass them.
 
-### Workflows
+## Workflows
 
 To list the current workflows in the engine:
 
@@ -108,7 +108,45 @@ cysu engine delete-workflow --workflow 'b6636c11-e12a-42f7-a182-d5229d13aa12'
 cysu engine clear-workflows
 ```
 
-### Runs
+## Scheduling
+
+Schedule a workflow with its own objective, a type, and an occurrence matching that type:
+
+```
+cysu engine schedule --workflow <id> --objective <prompt> --type daily --occurrence 09:00
+
+{
+  "id": "ce9d3bb7-ea84-4224-ad31-aa3964587394",
+  "when": {
+    "type": "daily",
+    "time": "09:00"
+  },
+  "tz": "Europe/Dublin",
+  "workspaceId": "8e4759b1-9998-4851-a717-2bd88dd1bfb1",
+  "objective": "Test"
+}
+```
+
+**Important** - These are the expected formats:
+
+```
+`once` -> `YYYY-MM-DDTHH:MM`
+`daily` -> `HH:MM`
+`weekdays` -> `HH:MM`
+`weekly` -> `"mon,thu HH:MM"`
+```
+
+To remove a scheduled action:
+
+```
+cysu engine unschedule --schedule <id>
+
+{
+  "deleted": "ce9d3bb7-ea84-4224-ad31-aa3964587394"
+}
+```
+
+## Runs
 
 To run a workflow:
 

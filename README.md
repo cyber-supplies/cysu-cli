@@ -97,6 +97,26 @@ Profiles:
   cysu profiles edit [--profile <profile>] [--all]
   cysu profiles save [--profile <profile>] [--all]
 
+Engine:
+  cysu engine auth             --passphrase <passphrase>
+  cysu engine status
+
+  cysu engine list-workflows
+  cysu engine get-workflow --workflow <id>
+  cysu engine create-workflow --name <name>
+  cysu engine save-workflow --name <name>
+  cysu engine clear-workflows
+  cysu engine delete-workflow  --workflow <id>
+
+  cysu engine schedule --workflow <id> --objective <text> --type <type> --occurrence <value> [--tz <timezone>] [--name <name>]
+  cysu engine unschedule --schedule <id>
+
+  cysu engine run --workflow <id> --objective <text>
+  cysu engine list-runs
+  cysu engine get-run --run <id>
+  cysu engine clear-runs
+  cysu engine cancel-run --run <id>
+
 Accounts:
   cysu accounts list [--location <location>]
   cysu accounts get --account <account>
