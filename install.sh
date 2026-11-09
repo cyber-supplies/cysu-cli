@@ -62,6 +62,8 @@ install_binary() {
 # to fix PATH when npm's global bin directory is not on it.
 check_path() {
 	if command -v cysu >/dev/null 2>&1; then
+		# First startup installs the examples bundled with the binary.
+		cysu help >/dev/null 2>&1 || fail "cysu startup failed; could not initialize local examples"
 		info "cysu installed at $(command -v cysu)"
 		return
 	fi
@@ -103,7 +105,7 @@ skill_checkout() {
 install_skill() {
 	info "Installing the cysu skill from $CYSU_SKILL_SOURCE"
 	skill_checkout
-	set -- add "$CYSU_SKILL_DIR" -g
+	set -- add "$CYSU_SKILL_DIR" -g --skill cysu
 	if [ -n "$CYSU_SKILL_AGENTS" ]; then
 		for agent in $CYSU_SKILL_AGENTS; do
 			set -- "$@" -a "$agent"
@@ -128,7 +130,9 @@ next_steps() {
 
 # cleanup removes the temporary checkout, if one was made.
 cleanup() {
-	[ -n "${CYSU_TMP:-}" ] && rm -rf "$CYSU_TMP"
+	if [ -n "${CYSU_TMP:-}" ]; then
+		rm -rf "$CYSU_TMP"
+	fi
 }
 
 main() {

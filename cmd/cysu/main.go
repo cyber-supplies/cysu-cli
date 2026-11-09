@@ -10,6 +10,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -40,6 +41,11 @@ func main() {
 	// Read before anything is parsed, so that a malformed command line is
 	// traceable too. --debug can still switch tracing on later (see cli.go).
 	setTracing(tracingFromEnv())
+	// Reference data is optional: a read-only or conflicting examples path
+	// must not prevent API commands, local cleanup, or help from working.
+	if err := ensureExamples(); err != nil {
+		_ = json.NewEncoder(os.Stderr).Encode(map[string]string{"warning": "could not initialize examples: " + err.Error()})
+	}
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -112,4 +118,5 @@ func printUsage() {
 	writeAligned(w, rows)
 
 	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Examples: ~/cysu/examples/{example-profile,example-run,example-workflow}")
 }

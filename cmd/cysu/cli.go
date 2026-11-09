@@ -94,7 +94,7 @@ func (r resource) usesAPI(c command) bool { return r.api && !c.local }
 // for all of them.
 func (r resource) flags(c command) []flagSpec {
 	flags := slices.Clone(c.flags)
-	if r.name == "engine" {
+	if r.name == "engine" && !c.local {
 		flags = append(flags, engineFlag, tokenFlag)
 	}
 	if r.usesAPI(c) && r.name != "engine" {
@@ -131,8 +131,8 @@ func (r resource) run(args []string) error {
 	if values.enabled("debug") {
 		setTracing(true)
 	}
-	if r.name == "engine" {
-		if err := enginePreflight(values, cmd.name != "auth" && cmd.name != "status"); err != nil {
+	if r.name == "engine" && !cmd.local {
+		if err := enginePreflight(values, cmd.name == "run"); err != nil {
 			return err
 		}
 	}
@@ -252,7 +252,7 @@ func (c command) parse(r resource, args []string) (flagValues, error) {
 	if len(missing) > 1 {
 		return nil, usageErrorf(usage, "%s: missing required flags %s", qualified, strings.Join(missing, ", "))
 	}
-	if r.name == "engine" {
+	if r.name == "engine" && !c.local {
 		if err := validateEngineURL(values); err != nil {
 			return nil, withUsage(err, usage)
 		}
