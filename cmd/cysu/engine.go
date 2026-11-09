@@ -141,13 +141,17 @@ func workflowPath(v flagValues) string {
 // validateRunObjective rejects empty or oversized objectives before
 // authentication or any network requests.
 func validateRunObjective(v flagValues) error {
+	return validateEngineObjective(v["objective"], "run")
+}
+
+// validateEngineObjective shares objective validation between runs and schedules.
+func validateEngineObjective(objective, action string) error {
 	invalid := func(message string) error { return cliError{message: message, exit: exitUsage} }
-	objective := v["objective"]
 	if !utf8.ValidString(objective) {
-		return invalid("run: objective must be valid UTF-8")
+		return invalid(action + ": objective must be valid UTF-8")
 	}
 	if strings.TrimSpace(objective) == "" {
-		return invalid("run: objective must not be empty")
+		return invalid(action + ": objective must not be empty")
 	}
 	// JavaScript measures the engine's limit in UTF-16 code units.
 	length := 0
@@ -158,7 +162,7 @@ func validateRunObjective(v flagValues) error {
 		}
 	}
 	if length > 100000 {
-		return invalid("run: objective must be at most 100000 characters (UTF-16 code units)")
+		return invalid(action + ": objective must be at most 100000 characters (UTF-16 code units)")
 	}
 	return nil
 }
@@ -236,6 +240,20 @@ var engineResource = resource{
 			},
 			validate: validateRunObjective,
 			run:      runWorkflow,
+		},
+		{
+			name:     "schedule",
+			flags:    engineScheduleFlags(),
+			validate: validateEngineSchedule,
+			run:      scheduleWorkflow,
+		},
+		{
+			name: "unschedule",
+			flags: []flagSpec{
+				{name: "schedule", placeholder: "id", usage: "full schedule UUID returned by schedule", required: true},
+			},
+			validate: validateScheduleID,
+			run:      unscheduleWorkflow,
 		},
 		{
 			name: "list-runs",
