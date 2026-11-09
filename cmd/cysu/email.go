@@ -1,26 +1,51 @@
 package main
 
-// email.go exposes local IMAP accounts through the CLI's JSON command tables.
+// email.go loads IMAP accounts from the email API. Message listing and reading
+// still use IMAP after fetching the selected account's credentials.
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
 var emailAccountFlag = flagSpec{
 	name: "account", placeholder: "accountId", required: true,
-	usage: "Account name from ~/.config/cysu/accounts.json",
+	usage: "Email account ID",
+}
+
+var emailPortFlag = flagSpec{
+	name: "port", placeholder: "int", usage: "IMAP TLS port (1-65535; 0 or omitted uses 993)",
 }
 
 var emailResource = resource{
-	name: "email", title: "Email",
+	name: "email", title: "Email", api: true, keyless: true,
 	commands: []command{
 		{name: "accounts", run: listEmailAccounts},
+		{
+			name: "create",
+			flags: []flagSpec{emailAccountFlag,
+				{name: "server", placeholder: "server", usage: "IMAP server host or address", required: true},
+				{name: "username", placeholder: "username", usage: "IMAP login username", required: true},
+				{name: "password", placeholder: "password", usage: "IMAP login password", required: true},
+				emailPortFlag,
+			},
+			validate: validateEmailPortFlag,
+			run:      createEmailAccount,
+		},
+		{
+			name: "modify",
+			flags: []flagSpec{emailAccountFlag,
+				{name: "server", placeholder: "server", usage: "replacement IMAP server"},
+				{name: "username", placeholder: "username", usage: "replacement IMAP username"},
+				{name: "password", placeholder: "password", usage: "replacement IMAP password"},
+				emailPortFlag,
+			},
+			validate: validateModifyEmailAccount,
+			run:      modifyEmailAccount,
+		},
 		{name: "list", flags: []flagSpec{emailAccountFlag}, run: listEmail},
 		{
 			name: "read",
@@ -33,9 +58,10 @@ var emailResource = resource{
 	},
 }
 
-// emailAccount matches checkemail's account configuration; extra fields such as
-// archive are harmless because this resource only lists and reads messages.
+// emailAccount is the full API record. Storage decrypts the password before
+// returning it, and this process uses it to log in to IMAP.
 type emailAccount struct {
+	ID       string `json:"id"`
 	Server   string `json:"server"`
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -44,83 +70,71 @@ type emailAccount struct {
 
 type emailAccounts map[string]emailAccount
 
-// emailAccountsPath resolves the requested accounts file without reading it.
-func emailAccountsPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("locating email accounts: %w", err)
+// parseEmailPort rejects values the email API cannot store.
+func parseEmailPort(value string) (int, error) {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 0 || port > 65535 {
+		return 0, cliError{message: "email port must be an integer from 0 to 65535", exit: exitUsage}
 	}
-	return filepath.Join(home, ".config", "cysu", "accounts.json"), nil
+	return port, nil
 }
 
-// createEmailAccounts initializes an empty private config without overwriting an
-// existing file, including one created by another command in the meantime.
-func createEmailAccounts(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("creating email accounts directory: %w", err)
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("creating email accounts %s: %w", path, err)
-	}
-	_, writeErr := file.WriteString("{}\n")
-	closeErr := file.Close()
-	if writeErr != nil {
-		return fmt.Errorf("initializing email accounts %s: %w", path, writeErr)
-	}
-	if closeErr != nil {
-		return fmt.Errorf("closing email accounts %s: %w", path, closeErr)
+// validateEmailPortFlag checks an optional port before authentication.
+func validateEmailPortFlag(v flagValues) error {
+	if v.provided("port") {
+		_, err := parseEmailPort(v["port"])
+		return err
 	}
 	return nil
 }
 
-// loadEmailAccounts creates missing config and validates credentials without
-// ever printing their values.
+// validateModifyEmailAccount requires at least one nonempty replacement.
+func validateModifyEmailAccount(v flagValues) error {
+	changed := false
+	for _, field := range []string{"server", "username", "password"} {
+		if v.provided(field) {
+			changed = true
+			if strings.TrimSpace(v[field]) == "" {
+				return cliError{message: "email modify: --" + field + " cannot be empty", exit: exitUsage}
+			}
+		}
+	}
+	if v.provided("port") {
+		changed = true
+		if err := validateEmailPortFlag(v); err != nil {
+			return err
+		}
+	}
+	if !changed {
+		return cliError{message: "email modify: provide --server, --username, --password, or --port", exit: exitUsage}
+	}
+	return nil
+}
+
+// loadEmailAccounts lists the caller's API accounts and indexes them by ID.
+// Malformed account data is rejected before any IMAP connection is attempted.
 func loadEmailAccounts() (emailAccounts, error) {
-	path, err := emailAccountsPath()
+	raw, err := send("GET", apiPath("emails"), nil)
 	if err != nil {
 		return nil, err
 	}
-	return loadEmailAccountsFile(path)
-}
-
-// loadEmailAccountsFile initializes and reads the accounts at path.
-func loadEmailAccountsFile(path string) (emailAccounts, error) {
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := createEmailAccounts(path); err != nil {
-			return nil, err
+	var rows []emailAccount
+	if err := json.Unmarshal(raw, &rows); err != nil || rows == nil {
+		return nil, failf("emails: unexpected response from the API")
+	}
+	accounts := make(emailAccounts, len(rows))
+	for _, acct := range rows {
+		if strings.TrimSpace(acct.ID) == "" || strings.TrimSpace(acct.Server) == "" ||
+			strings.TrimSpace(acct.Username) == "" || strings.TrimSpace(acct.Password) == "" {
+			return nil, failf("emails: incomplete account from the API")
 		}
-		raw, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("reading email accounts %s: %w", path, err)
-	}
-	var accounts emailAccounts
-	if err := json.Unmarshal(raw, &accounts); err != nil {
-		return nil, fmt.Errorf("parsing email accounts %s: %w", path, err)
-	}
-	if accounts == nil {
-		return nil, fmt.Errorf("email accounts %s must be a JSON object keyed by account ID", path)
-	}
-	for _, name := range accounts.names() {
-		if strings.TrimSpace(name) == "" {
-			return nil, fmt.Errorf("email accounts %s contains an empty account ID", path)
-		}
-		acct := accounts[name]
-		for _, field := range []struct{ name, value string }{
-			{"server", acct.Server}, {"username", acct.Username}, {"password", acct.Password},
-		} {
-			if strings.TrimSpace(field.value) == "" {
-				return nil, fmt.Errorf("email account %q has no %q", name, field.name)
-			}
+		if _, exists := accounts[acct.ID]; exists {
+			return nil, failf("emails: duplicate account ID from the API")
 		}
 		if _, err := emailServerAddress(acct); err != nil {
-			return nil, fmt.Errorf("email account %q: %w", name, err)
+			return nil, fmt.Errorf("email account %q: %w", acct.ID, err)
 		}
+		accounts[acct.ID] = acct
 	}
 	return accounts, nil
 }
@@ -155,7 +169,7 @@ func (a emailAccounts) lookup(name string) (string, emailAccount, error) {
 	return "", emailAccount{}, fmt.Errorf("unknown email account %q; known accounts: %s", name, strings.Join(a.names(), ", "))
 }
 
-// listEmailAccounts prints account IDs and email usernames without connecting to IMAP.
+// listEmailAccounts prints account IDs and usernames without exposing passwords.
 func listEmailAccounts(_ flagValues) error {
 	accounts, err := loadEmailAccounts()
 	if err != nil {
@@ -170,6 +184,52 @@ func listEmailAccounts(_ flagValues) error {
 		result = append(result, accountSummary{ID: id, Email: accounts[id].Username})
 	}
 	return printJSON(result)
+}
+
+// createEmailAccount stores a new full account in the API and prints it.
+func createEmailAccount(v flagValues) error {
+	acct := emailAccount{
+		ID: v["account"], Server: v["server"],
+		Username: v["username"], Password: v["password"],
+	}
+	if v.provided("port") {
+		port, err := parseEmailPort(v["port"])
+		if err != nil {
+			return err
+		}
+		acct.Port = port
+	}
+	return request("POST", apiPath("emails"), acct)
+}
+
+// modifyEmailAccount preserves omitted fields because PUT replaces the entire
+// account. The API's exact ID is kept even for a case-insensitive match.
+func modifyEmailAccount(v flagValues) error {
+	accounts, err := loadEmailAccounts()
+	if err != nil {
+		return err
+	}
+	_, acct, err := accounts.lookup(v["account"])
+	if err != nil {
+		return err
+	}
+	if v.provided("server") {
+		acct.Server = v["server"]
+	}
+	if v.provided("username") {
+		acct.Username = v["username"]
+	}
+	if v.provided("password") {
+		acct.Password = v["password"]
+	}
+	if v.provided("port") {
+		port, err := parseEmailPort(v["port"])
+		if err != nil {
+			return err
+		}
+		acct.Port = port
+	}
+	return request("PUT", apiPath("emails"), acct)
 }
 
 // openEmailAccount loads the selected credentials and opens a TLS IMAP session.

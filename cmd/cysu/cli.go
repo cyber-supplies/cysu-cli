@@ -82,7 +82,8 @@ type command struct {
 type resource struct {
 	name     string
 	title    string // section heading in the help text
-	api      bool   // talks to the backend: needs an API token and the master key
+	api      bool   // talks to the backend: needs an API token
+	keyless  bool   // API handles encryption; no local master key is needed
 	commands []command
 }
 
@@ -137,16 +138,17 @@ func (r resource) run(args []string) error {
 		}
 	}
 
-	// API commands resolve their token and the master key before they touch
-	// the network, so a missing token fails fast and the first-run passphrase
-	// prompt happens up front rather than mid-request. Both run after parsing
-	// so a usage error never triggers the prompt.
+	// API commands resolve their token and, when needed, the master key before
+	// they touch the network. Both run after parsing so usage errors never
+	// trigger a key prompt.
 	if r.usesAPI(cmd) {
 		if err := loadAPIToken(values); err != nil {
 			return err
 		}
-		if err := ensureKey(); err != nil {
-			return err
+		if !r.keyless {
+			if err := ensureKey(); err != nil {
+				return err
+			}
 		}
 	}
 	return cmd.run(values)

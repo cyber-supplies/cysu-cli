@@ -82,7 +82,10 @@ Notes:
 
 Email:
   cysu email accounts
-  cysu email list --account <accountsId> 
+  cysu email create --server <server> --username <username> --password <password> --port <int>
+  cysu email modify --account <accountId> [--server <server>] [--username <username>] [--password <password>] [--port <int>]
+
+  cysu email list --account <accountId> 
   cysu email read --account <accountId> --email <emailId>
 
 Profiles:
