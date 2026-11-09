@@ -1,0 +1,42 @@
+# Copy this folder to ~/cysu/engine/workflows/<name> and edit the settings.
+# Save with: cysu engine save-workflow --name <name>
+# No id means create; downloaded or created workflows include an id for updates.
+name: example-workflow
+request:
+  globalProfile: "" # Optional profile installed for every stage.
+  model: "" # Empty uses the default model.
+  reasoningEffort: medium
+  continueOnFailure: true
+  stages:
+    - profile: example-profile # Must exist in your account before running.
+      tag: "2" # Stage tags are strings, not zero-based stage indexes.
+  # After the stage succeeds, send these follow-ups in order, resuming the
+  # same agent conversation. They apply to every stage with tag "2".
+  # A failed follow-up fails the stage. Maximum: 20 follow-ups per stage.
+  reprompts:
+    - stage: "2"
+      prompt: Review the summary for missing information.
+    - stage: "2"
+      prompt: Resolve any remaining questions using the supplied material.
+  # Alternatively, define follow-ups on a stage itself (no tag required).
+  # Replace the stages entry above with this example:
+  # stages:
+  #   - profile: example-profile
+  #     reprompts:
+  #       - Review the summary for missing information.
+  #       - Resolve any remaining questions using the supplied material.
+  # Stage-local reprompts replace tagged reprompts, rather than appending.
+  # A stage-local reprompts: [] disables follow-ups for that stage.
+  # Remove the tagged reprompts section when using only untagged stages.
+  #
+  # Retry a failed initial attempt once with another model:
+  # fallbackModel: your-fallback-model
+  # Follow-ups use whichever model succeeded (initial or fallback).
+  # Override the model for tag "2". Model override stage numbers are integers:
+  # modelOverrides:
+  #   - stage: 2
+  #     model: your-model
+  # Instead of explicit stages, build them from profile tags; remove stages first:
+  # fromTags:
+  #   skip: ["3", "4"]
+# Objectives belong to individual runs, not to these workflow settings.

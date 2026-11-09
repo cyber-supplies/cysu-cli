@@ -9,13 +9,13 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // enginePreflight checks engine authentication and fills a missing user token.
-// Auth and status bypass the readiness gate; passphrases are not synchronized here.
+// Only starting a run requires ready credentials; passphrases are not synchronized here.
 func enginePreflight(v flagValues, requireAuth bool) error {
 	token := strings.TrimSpace(v["token"])
 	if token == "" {
@@ -54,7 +54,7 @@ func enginePreflight(v flagValues, requireAuth bool) error {
 		return failf("engine returned invalid status")
 	}
 	if requireAuth && (!state.Cysu || !state.LLM.Ready) {
-		return cliError{message: "engine authentication is incomplete: run cysu engine auth --passphrase <passphrase> and complete the Codex sign-in before using engine commands", exit: exitUsage}
+		return cliError{message: "engine authentication is incomplete: run cysu engine auth --passphrase <passphrase> and complete the Codex sign-in before starting a run", exit: exitUsage}
 	}
 	return nil
 }
@@ -138,116 +138,47 @@ func workflowPath(v flagValues) string {
 	return "/api/workspaces/" + url.PathEscape(v["workflow"])
 }
 
-// runWorkflow starts a workspace and returns the queued run without waiting
-// for its stages to finish.
-func runWorkflow(v flagValues) error {
-	return engineRequest(v, http.MethodPost, workflowPath(v)+"/run", nil)
-}
-
-// validateStageEvents checks and normalizes zero-based stage and paging values.
-func validateStageEvents(v flagValues) error {
-	for _, name := range []string{"stage", "after", "limit"} {
-		if name != "stage" && !v.provided(name) {
-			continue
+// validateRunObjective rejects empty or oversized objectives before
+// authentication or any network requests.
+func validateRunObjective(v flagValues) error {
+	invalid := func(message string) error { return cliError{message: message, exit: exitUsage} }
+	objective := v["objective"]
+	if !utf8.ValidString(objective) {
+		return invalid("run: objective must be valid UTF-8")
+	}
+	if strings.TrimSpace(objective) == "" {
+		return invalid("run: objective must not be empty")
+	}
+	// JavaScript measures the engine's limit in UTF-16 code units.
+	length := 0
+	for _, r := range objective {
+		length++
+		if r > 0xffff {
+			length++
 		}
-		n, err := strconv.ParseUint(v[name], 10, 53)
-		if err != nil {
-			return cliError{message: "--" + name + " must be a nonnegative integer", exit: exitUsage}
-		}
-		if name == "limit" && (n < 1 || n > 5000) {
-			return cliError{message: "--limit must be between 1 and 5000", exit: exitUsage}
-		}
-		v[name] = strconv.FormatUint(n, 10)
+	}
+	if length > 100000 {
+		return invalid("run: objective must be at most 100000 characters (UTF-16 code units)")
 	}
 	return nil
 }
 
-// getStage returns a page of raw stage events and the next sequence pointer.
-func getStage(v flagValues) error {
-	query := url.Values{}
-	for _, name := range []string{"after", "limit"} {
-		if v.provided(name) {
-			query.Set(name, v[name])
-		}
-	}
-	path := "/api/runs/" + url.PathEscape(v["run"]) + "/stages/" + v["stage"] + "/events"
-	if len(query) > 0 {
-		path += "?" + query.Encode()
-	}
-	return engineRequest(v, http.MethodGet, path, nil)
+// runWorkflow starts a workspace with this run's objective and returns the
+// queued run without waiting for its stages to finish.
+func runWorkflow(v flagValues) error {
+	return engineRequest(v, http.MethodPost, workflowPath(v)+"/run", map[string]string{"objective": v["objective"]})
 }
 
-// deleteWorkflow prints a JSON acknowledgment for the engine's empty 204 reply.
+// deleteWorkflow deletes the remote workflow, then removes matching local
+// checkouts by ID so renamed workflows and folders are handled correctly.
 func deleteWorkflow(v flagValues) error {
 	if _, err := engineSend(v, http.MethodDelete, workflowPath(v), nil); err != nil {
 		return err
 	}
+	if err := removeLocalWorkflow(v["workflow"]); err != nil {
+		return failf("workflow %s deleted from the engine, but local cleanup failed: %v", v["workflow"], err)
+	}
 	return printJSON(map[string]string{"deleted": v["workflow"]})
-}
-
-// validateWorkflowEdit requires at least one workflow setting to change.
-func validateWorkflowEdit(v flagValues) error {
-	if err := validateWorkflow(v); err != nil {
-		return err
-	}
-	for _, f := range workflowFlags(false) {
-		if v.provided(f.name) {
-			return nil
-		}
-	}
-	return cliError{message: "edit-workflow: provide at least one workflow setting to change", exit: exitUsage}
-}
-
-// editWorkflow merges explicitly supplied settings into the existing request.
-// The API replaces the whole request, so unspecified and advanced fields must
-// survive the update. The resolved ID pins both operations to the same workspace.
-func editWorkflow(v flagValues) error {
-	body := map[string]any{}
-	if v.provided("name") {
-		body["name"] = v["name"]
-	}
-	changeRequest := false
-	for _, f := range workflowFlags(false) {
-		if f.name != "name" && v.provided(f.name) {
-			changeRequest = true
-		}
-	}
-	if !changeRequest {
-		return engineRequest(v, http.MethodPatch, workflowPath(v), body)
-	}
-	raw, err := engineSend(v, http.MethodGet, workflowPath(v), nil)
-	if err != nil {
-		return err
-	}
-	var current struct {
-		ID      string                     `json:"id"`
-		Request map[string]json.RawMessage `json:"request"`
-	}
-	if err := json.Unmarshal(raw, &current); err != nil || current.Request == nil || current.ID == "" {
-		return failf("engine returned an invalid workflow")
-	}
-	set := func(key string, value any) {
-		encoded, _ := json.Marshal(value)
-		current.Request[key] = encoded
-	}
-	for flag, field := range map[string]string{
-		"prompt": "prompt", "global-profile": "globalProfile", "model": "model",
-		"fallback-model": "fallbackModel", "reasoning-effort": "reasoningEffort",
-	} {
-		if v.provided(flag) {
-			set(field, v[flag])
-		}
-	}
-	settings := workflowBody(v)["request"].(map[string]any)
-	if v.provided("profile") {
-		delete(current.Request, "fromTags")
-		set("stages", settings["stages"])
-	}
-	if v.provided("stop-on-failure") {
-		set("continueOnFailure", !v.enabled("stop-on-failure"))
-	}
-	body["request"] = current.Request
-	return engineRequest(v, http.MethodPatch, "/api/workspaces/"+url.PathEscape(current.ID), body)
 }
 
 // engineResource exposes saved engine workspaces as workflows in the CLI.
@@ -269,31 +200,42 @@ var engineResource = resource{
 			},
 		},
 		{
-			name: "get-workflows",
+			name: "list-workflows",
 			run:  func(v flagValues) error { return engineRequest(v, http.MethodGet, "/api/workspaces", nil) },
 		},
 		{
 			name:  "get-workflow",
 			flags: []flagSpec{workflowRefFlag},
-			run:   func(v flagValues) error { return engineRequest(v, http.MethodGet, workflowPath(v), nil) },
+			run:   getWorkflow,
 		},
 		{
-			name:     "create-workflow",
-			flags:    workflowFlags(true),
-			validate: validateWorkflow,
-			run: func(v flagValues) error {
-				return engineRequest(v, http.MethodPost, "/api/workspaces", workflowBody(v))
+			name: "create-workflow",
+			flags: []flagSpec{
+				{name: "name", placeholder: "name", usage: "new workflow name and local folder", required: true},
 			},
+			validate: validateWorkflowCreate,
+			run:      createWorkflow,
 		},
 		{
-			name:  "run",
-			flags: []flagSpec{workflowRefFlag},
-			run:   runWorkflow,
+			name: "save-workflow",
+			flags: []flagSpec{
+				{name: "name", placeholder: "name", usage: "local workflow folder containing settings.yaml", required: true},
+			},
+			validate: validateWorkflowSave,
+			run:      saveWorkflow,
 		},
 		{
-			name:  "run-workflow",
-			flags: []flagSpec{workflowRefFlag},
-			run:   runWorkflow,
+			name:  "clear-workflows",
+			local: true,
+			run:   func(flagValues) error { return clearEngineDirectory("workflows") },
+		},
+		{
+			name: "run",
+			flags: []flagSpec{workflowRefFlag,
+				{name: "objective", placeholder: "text", usage: "objective for this run", required: true},
+			},
+			validate: validateRunObjective,
+			run:      runWorkflow,
 		},
 		{
 			name: "list-runs",
@@ -302,31 +244,14 @@ var engineResource = resource{
 			},
 		},
 		{
-			name:  "get-run-status",
+			name:  "get-run",
 			flags: []flagSpec{runRefFlag},
-			run: func(v flagValues) error {
-				return engineRequest(v, http.MethodGet, "/api/runs/"+url.PathEscape(v["run"]), nil)
-			},
+			run:   getRun,
 		},
 		{
-			name: "get-run",
-			flags: []flagSpec{runRefFlag,
-				{name: "cursor", placeholder: "cursor", usage: "cursor from the previous response; omit to read from the beginning"},
-			},
-			run: func(v flagValues) error {
-				query := url.Values{"cursor": {v["cursor"]}}
-				return engineRequest(v, http.MethodGet, "/api/runs/"+url.PathEscape(v["run"])+"/feed?"+query.Encode(), nil)
-			},
-		},
-		{
-			name: "get-stage",
-			flags: []flagSpec{runRefFlag,
-				{name: "stage", placeholder: "index", usage: "zero-based stage index (first stage is 0)", required: true},
-				{name: "after", placeholder: "sequence", usage: "return events after this sequence; use next from the previous response (default 0)"},
-				{name: "limit", placeholder: "count", usage: "maximum events to return, 1–5000 (default 500)"},
-			},
-			validate: validateStageEvents,
-			run:      getStage,
+			name:  "clear-runs",
+			local: true,
+			run:   func(flagValues) error { return clearRuns() },
 		},
 		{
 			name:  "cancel-run",
@@ -340,79 +265,7 @@ var engineResource = resource{
 			flags: []flagSpec{workflowRefFlag},
 			run:   deleteWorkflow,
 		},
-		{
-			name:     "edit-workflow",
-			flags:    append([]flagSpec{workflowRefFlag}, workflowFlags(false)...),
-			validate: validateWorkflowEdit,
-			run:      editWorkflow,
-		},
 	},
-}
-
-// workflowFlags shares run settings between workflow creation and editing.
-// During editing an explicitly empty value clears that setting.
-func workflowFlags(create bool) []flagSpec {
-	flags := []flagSpec{
-		{name: "name", placeholder: "name", usage: "unique workflow name; creates and selects the workflow", required: true},
-		{name: "prompt", placeholder: "text", usage: "objective given to every stage; omit for a draft"},
-		{name: "profile", placeholder: "id", usage: "stage profile, in execution order", multi: true},
-		{name: "global-profile", placeholder: "id", usage: "global profile installed for every stage"},
-		{name: "model", placeholder: "model", usage: "default model for every stage"},
-		{name: "fallback-model", placeholder: "model", usage: "retry a failed stage with this model"},
-		{name: "reasoning-effort", placeholder: "effort", usage: "none, minimal, low, medium, high, xhigh, max, or ultra"},
-		{name: "stop-on-failure", usage: "skip remaining stages after a stage fails", boolean: true},
-	}
-	flags[0].required = create
-	if !create {
-		flags[0].usage = "replacement workflow name"
-		flags[1].usage = "replacement objective; an empty value clears it"
-		flags[2].usage = "replace stage profiles, in execution order"
-		for i := range flags {
-			if flags[i].name == "stop-on-failure" {
-				flags[i].usage = "stop after failure; use --stop-on-failure=false to continue"
-			}
-		}
-	}
-	return flags
-}
-
-// validateWorkflow checks flag combinations before creating a saved setup.
-// A draft may omit both its objective and its stage profiles.
-func validateWorkflow(v flagValues) error {
-	invalid := func(message string) error { return cliError{message: message, exit: exitUsage} }
-	if effort := v["reasoning-effort"]; effort != "" {
-		switch effort {
-		case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra":
-		default:
-			return invalid("--reasoning-effort must be none, minimal, low, medium, high, xhigh, max, or ultra")
-		}
-	}
-	if len(v.list("profile")) > 20 {
-		return invalid("at most 20 --profile stages are supported")
-	}
-	return nil
-}
-
-// workflowBody translates CLI flags into the engine's workspace schema.
-func workflowBody(v flagValues) map[string]any {
-	request := map[string]any{"prompt": v["prompt"]}
-	stages := make([]map[string]string, 0, len(v.list("profile")))
-	for _, profile := range v.list("profile") {
-		stages = append(stages, map[string]string{"profile": profile})
-	}
-	request["stages"] = stages
-	for flag, field := range map[string]string{
-		"global-profile": "globalProfile", "model": "model",
-		"fallback-model": "fallbackModel", "reasoning-effort": "reasoningEffort",
-	} {
-		if v[flag] != "" {
-			request[field] = v[flag]
-		}
-	}
-	if v.enabled("stop-on-failure") {
-		request["continueOnFailure"] = false
-	}
-	return map[string]any{"name": v["name"], "request": request}
 }
 
 // engineRequest sends JSON to the selected engine and prints its response.

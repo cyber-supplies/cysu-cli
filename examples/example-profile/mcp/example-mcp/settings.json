@@ -1,0 +1,6 @@
+{
+  "name": "example-mcp",
+  "type": "http",
+  "url": "https://example.com/mcp",
+  "headers": {}
+}
