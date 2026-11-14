@@ -87,6 +87,7 @@ Email:
 
   cysu email list --account <accountId> 
   cysu email read --account <accountId> --email <emailId>
+  cysu email send --account <accountId> --recipient <email> --subject <subject> --body <body>
 
 Profiles:
   cysu profiles install --scope <global|project> --profile <profile> [--provider <provider>]

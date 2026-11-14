@@ -1,7 +1,7 @@
 package main
 
-// email.go loads IMAP accounts from the email API. Message listing and reading
-// still use IMAP after fetching the selected account's credentials.
+// email.go loads mail accounts from the email API. Listing and reading use
+// IMAP; sending uses SMTP directly from this process.
 
 import (
 	"encoding/json"
@@ -47,6 +47,11 @@ var emailResource = resource{
 			run:      modifyEmailAccount,
 		},
 		{name: "list", flags: []flagSpec{emailAccountFlag}, run: listEmail},
+		{name: "send", flags: []flagSpec{emailAccountFlag,
+			{name: "recipient", placeholder: "email", required: true, usage: "Recipient email address"},
+			{name: "subject", placeholder: "subject", required: true, usage: "Message subject"},
+			{name: "body", placeholder: "body", required: true, usage: "Plain text message body"},
+		}, run: sendEmail},
 		{
 			name: "read",
 			flags: []flagSpec{emailAccountFlag, {
@@ -59,7 +64,7 @@ var emailResource = resource{
 }
 
 // emailAccount is the full API record. Storage decrypts the password before
-// returning it, and this process uses it to log in to IMAP.
+// returning it, and this process uses it to log in to IMAP or SMTP.
 type emailAccount struct {
 	ID       string `json:"id"`
 	Server   string `json:"server"`
@@ -112,7 +117,7 @@ func validateModifyEmailAccount(v flagValues) error {
 }
 
 // loadEmailAccounts lists the caller's API accounts and indexes them by ID.
-// Malformed account data is rejected before any IMAP connection is attempted.
+// Malformed account data is rejected before any mail connection is attempted.
 func loadEmailAccounts() (emailAccounts, error) {
 	raw, err := send("GET", apiPath("emails"), nil)
 	if err != nil {
@@ -230,6 +235,23 @@ func modifyEmailAccount(v flagValues) error {
 		acct.Port = port
 	}
 	return request("PUT", apiPath("emails"), acct)
+}
+
+// sendEmail loads the selected account through the API, then sends directly
+// from this machine to its configured SMTP server.
+func sendEmail(v flagValues) error {
+	accounts, err := loadEmailAccounts()
+	if err != nil {
+		return err
+	}
+	id, acct, err := accounts.lookup(v["account"])
+	if err != nil {
+		return err
+	}
+	if err := smtpDeliver(smtpDeliveryAccount(acct), v["recipient"], v["subject"], v["body"]); err != nil {
+		return err
+	}
+	return printJSON(map[string]any{"success": true, "account": id, "recipient": v["recipient"]})
 }
 
 // openEmailAccount loads the selected credentials and opens a TLS IMAP session.
