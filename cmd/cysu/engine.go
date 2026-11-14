@@ -51,7 +51,7 @@ func enginePreflight(v flagValues, requireAuth bool) error {
 		return failf("engine returned invalid status")
 	}
 	if requireAuth && (!state.Cysu || !state.LLM.Ready) {
-		return cliError{message: "engine authentication is incomplete: use cysu engine set-passphrase and cysu engine auth --provider codex|claude|openrouter; saved credentials select Codex, then Claude, then OpenRouter", exit: exitUsage}
+		return cliError{message: "engine authentication is incomplete: use cysu engine auth --provider codex|claude|openrouter (with --passphrase if the engine passphrase is not set); select the execution provider in your workflow", exit: exitUsage}
 	}
 	return nil
 }
@@ -140,7 +140,7 @@ var engineResource = resource{
 			name: "auth",
 			flags: []flagSpec{
 				authProviderFlag, secretStdinFlag,
-				{name: "passphrase", placeholder: "passphrase", usage: "optional legacy passphrase update; prefer set-passphrase --stdin"},
+				{name: "passphrase", placeholder: "passphrase", usage: "optional Cyber Supplies encryption passphrase to save during authentication"},
 				{name: "model", placeholder: "provider/model", usage: "OpenRouter default model; omit to retain the saved model"},
 				{name: "model-only", boolean: true, usage: "update only the OpenRouter model, keeping its saved key"},
 			},
@@ -233,7 +233,7 @@ var engineResource = resource{
 			flags: []flagSpec{workflowRefFlag},
 			run:   deleteWorkflow,
 		},
-	}, engineManagementCommands()...),
+	}, engineAuthCommands()...),
 }
 
 // engineRequest sends JSON to the selected engine and prints its response.
@@ -255,11 +255,6 @@ func engineSend(v flagValues, method, path string, body any) ([]byte, error) {
 // engineSendWithStatus also returns the HTTP status so preflight can recognize
 // the engine's first-setup challenge without parsing a masked settings token.
 func engineSendWithStatus(v flagValues, method, path string, body any) ([]byte, int, error) {
-	return engineExchange(v, method, path, body, 30*time.Second, "application/json", nil)
-}
-
-// engineExchange keeps redirects and TLS verification consistent for JSON, logs and archives.
-func engineExchange(v flagValues, method, path string, body any, timeout time.Duration, accept string, dst io.Writer) ([]byte, int, error) {
 	var encoded []byte
 	var reader io.Reader
 	if body != nil {
@@ -275,7 +270,7 @@ func engineExchange(v flagValues, method, path string, body any, timeout time.Du
 	if err != nil {
 		return nil, 0, fmt.Errorf("building engine request: %w", err)
 	}
-	req.Header.Set("Accept", accept)
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+v["token"])
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -285,7 +280,6 @@ func engineExchange(v flagValues, method, path string, body any, timeout time.Du
 	start := time.Now()
 	// Never forward engine settings (including credentials) through redirects.
 	client := *httpClient
-	client.Timeout = timeout
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
@@ -294,11 +288,6 @@ func engineExchange(v flagValues, method, path string, body any, timeout time.Du
 		return nil, 0, failf("%s %s: %v", method, endpoint, cause)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 300 && dst != nil {
-		count, err := io.Copy(dst, resp.Body)
-		traceTransferResponse(n, resp.StatusCode, time.Since(start), count)
-		return nil, resp.StatusCode, err
-	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		traceFailure(n, time.Since(start), err)
@@ -308,7 +297,7 @@ func engineExchange(v flagValues, method, path string, body any, timeout time.Du
 	if resp.StatusCode >= 300 {
 		return raw, resp.StatusCode, backendError(resp.StatusCode, safe(raw))
 	}
-	if accept == "application/json" && resp.StatusCode != http.StatusNoContent && !json.Valid(raw) {
+	if resp.StatusCode != http.StatusNoContent && !json.Valid(raw) {
 		return nil, resp.StatusCode, failf("engine returned an invalid JSON response (HTTP %d)", resp.StatusCode)
 	}
 	if body != nil {

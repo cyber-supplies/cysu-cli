@@ -13,10 +13,8 @@ import (
 // engineTranscript keeps only the latest version of unfinished items, avoiding
 // duplicate tool calls as started/updated/completed events arrive across pages.
 type engineTranscript struct {
-	dst         io.Writer
-	pending     map[string]json.RawMessage
-	claudeTools map[string]string
-	claudeText  map[string]string
+	dst     io.Writer
+	pending map[string]json.RawMessage
 }
 
 // write renders completed items and errors, holding unfinished items until the
@@ -30,16 +28,6 @@ func (t *engineTranscript) write(raw json.RawMessage) error {
 	}
 	if err := json.Unmarshal(raw, &event); err != nil {
 		return err
-	}
-	if t.pending == nil {
-		t.pending = map[string]json.RawMessage{}
-	}
-	if event.Type == "engine.attempt" {
-		t.claudeTools = nil
-		t.claudeText = nil
-	}
-	if event.Type == "assistant" || event.Type == "user" || event.Type == "result" {
-		return t.writeClaude(raw)
 	}
 	if strings.HasPrefix(event.Type, "item.") && event.Item.ID != "" {
 		if event.Type == "item.started" || event.Type == "item.updated" {

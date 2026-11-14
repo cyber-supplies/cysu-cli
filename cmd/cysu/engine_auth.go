@@ -16,6 +16,17 @@ import (
 var authProviderFlag = flagSpec{name: "provider", placeholder: "provider", usage: "codex (default), claude, or openrouter", fallback: func() (string, error) { return "codex", nil }}
 var secretStdinFlag = flagSpec{name: "stdin", boolean: true, usage: "read the secret from stdin instead of a hidden terminal prompt"}
 
+// These commands only manage credentials. Workflows choose the execution provider.
+func engineAuthCommands() []command {
+	return []command{
+		{name: "auth-code", flags: []flagSpec{{name: "id", placeholder: "id", usage: "Claude login attempt ID", required: true}, secretStdinFlag}, run: submitClaudeCode},
+		{name: "auth-status", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodGet, "auth")},
+		{name: "login-status", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodGet, "login")},
+		{name: "cancel-auth", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodDelete, "login")},
+		{name: "forget-auth", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodDelete, "auth")},
+	}
+}
+
 func validateAuthProvider(v flagValues) error {
 	switch v["provider"] {
 	case "codex", "claude", "openrouter":
@@ -38,7 +49,7 @@ func validateAuthEngine(v flagValues) error {
 }
 
 // Secret input is never echoed or included in parsing errors. Remove one line
-// ending, preserving intentional whitespace and embedded newlines in passkeys.
+// ending without discarding other input.
 func readEngineSecret(v flagValues, label string) (string, error) {
 	var raw []byte
 	var err error
@@ -59,14 +70,6 @@ func readEngineSecret(v flagValues, label string) (string, error) {
 		return "", failf("%s must be nonempty, at most 16 KiB and contain no NUL", label)
 	}
 	return value, nil
-}
-
-func setEnginePassphrase(v flagValues) error {
-	value, err := readEngineSecret(v, "Passphrase")
-	if err != nil {
-		return err
-	}
-	return engineRequest(v, http.MethodPut, "/api/settings", map[string]string{"passkey": value})
 }
 
 func authEngine(v flagValues) error {
@@ -184,7 +187,7 @@ func engineRedactor(encoded []byte, token string) func([]byte) []byte {
 		switch value := value.(type) {
 		case map[string]any:
 			for key, item := range value {
-				if isSensitive(key) || key == "code" || key == "value" {
+				if isSensitive(key) || key == "code" {
 					if s, ok := item.(string); ok && s != "" {
 						secrets = append(secrets, s)
 					}
