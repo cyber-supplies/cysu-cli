@@ -389,6 +389,12 @@ cysu email read --account <accountId> --email <emailId>
 }
 ```
 
+Sending emails requires the user token. To send an email:
+
+```
+cysu email send --account <accountId> --recipient <email> --subject <subject> --body <body>
+```
+
 ## Notes [LLM]
 
 Notes allow you to store learnings about a website in a structured manner. They are broken down by domain, and optionally by path.
