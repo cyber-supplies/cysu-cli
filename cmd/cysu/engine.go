@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-// enginePreflight checks engine authentication and fills a missing user token.
+// enginePreflight checks authentication; provisioning belongs to the installer.
 // Only starting a run requires ready credentials; passphrases are not synchronized here.
 func enginePreflight(v flagValues, requireAuth bool) error {
 	token := strings.TrimSpace(v["token"])
@@ -36,10 +36,7 @@ func enginePreflight(v flagValues, requireAuth bool) error {
 		if json.Unmarshal(raw, &rejected) != nil || !rejected.SetupRequired {
 			return err
 		}
-		if _, err = engineSend(v, http.MethodPut, "/api/settings", map[string]string{"token": token}); err != nil {
-			return err
-		}
-		raw, err = engineSend(v, http.MethodGet, "/api/status", nil)
+		return failf("engine is not provisioned: on the engine host run install.sh --token <user-token> (optionally --ip <public-ip>); setup is not available over HTTP")
 	}
 	if err != nil {
 		return err
@@ -54,60 +51,9 @@ func enginePreflight(v flagValues, requireAuth bool) error {
 		return failf("engine returned invalid status")
 	}
 	if requireAuth && (!state.Cysu || !state.LLM.Ready) {
-		return cliError{message: "engine authentication is incomplete: run cysu engine auth --passphrase <passphrase> and complete the Codex sign-in before starting a run", exit: exitUsage}
+		return cliError{message: "engine authentication is incomplete: use cysu engine set-passphrase and cysu engine auth --provider codex|claude|openrouter; saved credentials select Codex, then Claude, then OpenRouter", exit: exitUsage}
 	}
 	return nil
-}
-
-// authEngine explicitly saves the supplied passphrase and initiates Codex
-// device login. Return the URL/code as JSON, leaving the engine to finish
-// login in the background after the user signs in through the browser.
-func authEngine(v flagValues) error {
-	if _, err := engineSend(v, http.MethodPut, "/api/settings", map[string]string{"passkey": v["passphrase"]}); err != nil {
-		return err
-	}
-	raw, err := engineSend(v, http.MethodPost, "/api/llm/codex-login", nil)
-	if err != nil {
-		return err
-	}
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		var login struct {
-			Status string `json:"status"`
-			URL    string `json:"url"`
-			Code   string `json:"code"`
-			Error  string `json:"error"`
-		}
-		if err := json.Unmarshal(raw, &login); err != nil {
-			return failf("engine returned invalid Codex login state")
-		}
-		switch login.Status {
-		case "failed", "cancelled":
-			if login.Error != "" {
-				return failf("Codex login %s: %s", login.Status, login.Error)
-			}
-			return failf("Codex login %s", login.Status)
-		case "succeeded":
-			printResponse(raw)
-			return nil
-		case "waiting":
-			if login.URL != "" && login.Code != "" {
-				printResponse(raw)
-				return nil
-			}
-		case "starting":
-		default:
-			return failf("engine returned invalid Codex login state")
-		}
-		if !time.Now().Before(deadline) {
-			return failf("Codex login has not provided a sign-in code yet; retry cysu engine auth --passphrase <passphrase>")
-		}
-		time.Sleep(500 * time.Millisecond)
-		raw, err = engineSend(v, http.MethodGet, "/api/llm/codex-login", nil)
-		if err != nil {
-			return err
-		}
-	}
 }
 
 // workflowRefFlag identifies a saved workspace strictly by its UUID.
@@ -186,16 +132,20 @@ func deleteWorkflow(v flagValues) error {
 }
 
 // engineResource exposes saved engine workspaces as workflows in the CLI.
-// A preflight supplies missing credentials; commands need no local master key.
+// Preflight verifies the token; commands need no local master key.
 var engineResource = resource{
 	name: "engine", title: "Engine",
-	commands: []command{
+	commands: append([]command{
 		{
 			name: "auth",
 			flags: []flagSpec{
-				{name: "passphrase", placeholder: "passphrase", usage: "passphrase to save in the engine before starting Codex sign-in", required: true},
+				authProviderFlag, secretStdinFlag,
+				{name: "passphrase", placeholder: "passphrase", usage: "optional legacy passphrase update; prefer set-passphrase --stdin"},
+				{name: "model", placeholder: "provider/model", usage: "OpenRouter default model; omit to retain the saved model"},
+				{name: "model-only", boolean: true, usage: "update only the OpenRouter model, keeping its saved key"},
 			},
-			run: authEngine,
+			validate: validateAuthEngine,
+			run:      authEngine,
 		},
 		{
 			name: "status",
@@ -283,7 +233,7 @@ var engineResource = resource{
 			flags: []flagSpec{workflowRefFlag},
 			run:   deleteWorkflow,
 		},
-	},
+	}, engineManagementCommands()...),
 }
 
 // engineRequest sends JSON to the selected engine and prints its response.
@@ -305,6 +255,11 @@ func engineSend(v flagValues, method, path string, body any) ([]byte, error) {
 // engineSendWithStatus also returns the HTTP status so preflight can recognize
 // the engine's first-setup challenge without parsing a masked settings token.
 func engineSendWithStatus(v flagValues, method, path string, body any) ([]byte, int, error) {
+	return engineExchange(v, method, path, body, 30*time.Second, "application/json", nil)
+}
+
+// engineExchange keeps redirects and TLS verification consistent for JSON, logs and archives.
+func engineExchange(v flagValues, method, path string, body any, timeout time.Duration, accept string, dst io.Writer) ([]byte, int, error) {
 	var encoded []byte
 	var reader io.Reader
 	if body != nil {
@@ -320,15 +275,17 @@ func engineSendWithStatus(v flagValues, method, path string, body any) ([]byte, 
 	if err != nil {
 		return nil, 0, fmt.Errorf("building engine request: %w", err)
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
 	req.Header.Set("Authorization", "Bearer "+v["token"])
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	n := traceRequest(method, endpoint, req.Header, encoded)
+	safe := engineRedactor(encoded, v["token"])
+	n := traceRequest(method, endpoint, req.Header, safe(encoded))
 	start := time.Now()
 	// Never forward engine settings (including credentials) through redirects.
 	client := *httpClient
+	client.Timeout = timeout
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
@@ -337,17 +294,25 @@ func engineSendWithStatus(v flagValues, method, path string, body any) ([]byte, 
 		return nil, 0, failf("%s %s: %v", method, endpoint, cause)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 300 && dst != nil {
+		count, err := io.Copy(dst, resp.Body)
+		traceTransferResponse(n, resp.StatusCode, time.Since(start), count)
+		return nil, resp.StatusCode, err
+	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		traceFailure(n, time.Since(start), err)
 		return nil, 0, fmt.Errorf("reading engine response: %w", err)
 	}
-	traceResponse(n, resp.StatusCode, time.Since(start), raw)
+	traceResponse(n, resp.StatusCode, time.Since(start), safe(raw))
 	if resp.StatusCode >= 300 {
-		return raw, resp.StatusCode, backendError(resp.StatusCode, raw)
+		return raw, resp.StatusCode, backendError(resp.StatusCode, safe(raw))
 	}
-	if resp.StatusCode != http.StatusNoContent && !json.Valid(raw) {
+	if accept == "application/json" && resp.StatusCode != http.StatusNoContent && !json.Valid(raw) {
 		return nil, resp.StatusCode, failf("engine returned an invalid JSON response (HTTP %d)", resp.StatusCode)
+	}
+	if body != nil {
+		raw = safe(raw)
 	}
 	return raw, resp.StatusCode, nil
 }

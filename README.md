@@ -102,8 +102,22 @@ Profiles:
   cysu profiles save [--profile <profile>] [--all]
 
 Engine:
-  cysu engine auth             --passphrase <passphrase>
+  cysu engine set-passphrase [--stdin]
+  cysu engine auth [--provider codex|claude]
+  cysu engine auth --provider openrouter --model <provider/model> [--stdin]
+  cysu engine auth-code --id <claude-login-id> [--stdin]
+  cysu engine auth-status [--provider codex|claude|openrouter]
+  cysu engine login-status [--provider codex|claude]
+  cysu engine cancel-auth [--provider codex|claude]
+  cysu engine forget-auth [--provider codex|claude|openrouter]
   cysu engine status
+  cysu engine settings
+  cysu engine set-settings --file <patch.yaml>
+  cysu engine list-secrets
+  cysu engine set-secret --name <NAME> [--stdin]
+  cysu engine delete-secret --name <NAME>
+  cysu engine daybreak-status
+  cysu engine check-daybreak [--model <model>]
 
   cysu engine list-workflows
   cysu engine get-workflow --workflow <id>
@@ -114,12 +128,25 @@ Engine:
 
   cysu engine schedule --workflow <id> --objective <text> --type <type> --occurrence <value> [--tz <timezone>] [--name <name>]
   cysu engine unschedule --schedule <id>
+  cysu engine list-schedules
+  cysu engine get-schedule --schedule <id>
+  cysu engine update-schedule --schedule <id> --file <patch.yaml>
+  cysu engine pause-schedule --schedule <id>
+  cysu engine resume-schedule --schedule <id>
 
+  cysu engine set-provider --workflow <id> --provider <codex|claude|openrouter|auto>
+  cysu engine plan --workflow <id> --objective <text>
   cysu engine run --workflow <id> --objective <text>
   cysu engine list-runs
   cysu engine get-run --run <id>
   cysu engine clear-runs
   cysu engine cancel-run --run <id>
+  cysu engine run-status --run <id>
+  cysu engine watch --run <id> [--follow] [--cursor <cursor>]
+  cysu engine get-log --run <id> --stage <index>
+  cysu engine rerun --run <id>
+  cysu engine download-run --run <id> --output <path.tar.gz>
+  cysu engine delete-run --run <id>
 
 Accounts:
   cysu accounts list [--location <location>]
@@ -135,6 +162,8 @@ Key:
   cysu key path
   cysu key verify
 ```
+
+See [Engine v3](docs/engine-v3.md) for installation, provider login, settings and migration examples.
 
 ## Authentication
 

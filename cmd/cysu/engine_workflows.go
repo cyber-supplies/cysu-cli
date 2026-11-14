@@ -22,6 +22,7 @@ const workflowExampleYAML = `# Edit these settings, then use save-workflow with 
 id: "" # Assigned by the engine; keep this ID when saving edits.
 name: ""
 request:
+  # provider: claude # codex, claude, or openrouter; omit for Codex → Claude → OpenRouter.
   globalProfile: "" # Optional global profile installed for every stage.
   model: "" # Empty uses the engine's default model.
   reasoningEffort: medium
@@ -120,6 +121,11 @@ func validateWorkflowSettings(settings *engineWorkflowSettings) error {
 			return failf("settings.yaml: workflows have no objective; provide --objective when starting a run")
 		}
 	}
+	if provider, exists := settings.Request["provider"]; exists {
+		if provider != "codex" && provider != "claude" && provider != "openrouter" {
+			return failf("settings.yaml: provider must be codex, claude, or openrouter; omit it for automatic selection")
+		}
+	}
 	_, picked := settings.Request["stages"]
 	_, tagged := settings.Request["fromTags"]
 	if picked && tagged {
@@ -134,6 +140,9 @@ func validateWorkflowSettings(settings *engineWorkflowSettings) error {
 			fields, ok := stage.(map[string]any)
 			if !ok {
 				return failf("settings.yaml: each stage must be an object")
+			}
+			if _, exists := fields["provider"]; exists {
+				return failf("settings.yaml: provider belongs on request, not a stage")
 			}
 			for _, key := range []string{"prompt", "objective"} {
 				if _, exists := fields[key]; exists {

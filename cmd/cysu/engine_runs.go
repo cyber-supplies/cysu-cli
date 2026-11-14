@@ -86,9 +86,10 @@ func getRun(v flagValues) error {
 		return err
 	}
 	var run struct {
-		ID     string           `json:"id"`
-		Status string           `json:"status"`
-		Stages []engineRunStage `json:"stages"`
+		ID       string           `json:"id"`
+		Status   string           `json:"status"`
+		Provider string           `json:"provider"`
+		Stages   []engineRunStage `json:"stages"`
 	}
 	if err := json.Unmarshal(raw, &run); err != nil || !workflowIDPattern.MatchString(run.ID) || run.Stages == nil {
 		return failf("engine returned an invalid run")
@@ -142,7 +143,7 @@ func getRun(v flagValues) error {
 		return err
 	}
 	return printJSON(map[string]any{
-		"success": true, "run": run.ID, "status": run.Status,
+		"success": true, "run": run.ID, "status": run.Status, "provider": run.Provider,
 		"directory": root, "stages": stages,
 	})
 }
