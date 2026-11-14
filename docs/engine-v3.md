@@ -48,20 +48,17 @@ body.
 cysu engine auth-status --provider codex
 cysu engine auth-status --provider claude
 cysu engine auth-status --provider openrouter
-cysu engine login-status --provider claude
 cysu engine cancel-auth --provider claude
-cysu engine forget-auth --provider claude
 ```
 
-`auth-status` inspects saved credentials. `login-status` and `cancel-auth`
-apply to an ongoing Codex or Claude browser login. `forget-auth` removes the
-selected provider's saved credentials. Forgetting Claude credentials returns
-409 while a run owns its volume.
+`auth-status` inspects saved credentials. `cancel-auth` cancels an ongoing
+Codex or Claude browser login.
 
 A slow login startup or code exchange returns its current state after
-30 seconds; poll `login-status` to continue checking it. Claude login attempts
-expire after 15 minutes. The CLI handles success, failure, cancellation and
-expiry without starting another attempt automatically.
+30 seconds while the engine continues in the background. Use `auth-status`
+to check whether credentials have been saved. Claude login attempts expire
+after 15 minutes. The CLI handles success, failure, cancellation and expiry
+without starting another attempt automatically.
 
 ## Workflow provider
 

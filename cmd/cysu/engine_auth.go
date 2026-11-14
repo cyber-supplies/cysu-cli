@@ -21,9 +21,7 @@ func engineAuthCommands() []command {
 	return []command{
 		{name: "auth-code", flags: []flagSpec{{name: "id", placeholder: "id", usage: "Claude login attempt ID", required: true}, secretStdinFlag}, run: submitClaudeCode},
 		{name: "auth-status", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodGet, "auth")},
-		{name: "login-status", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodGet, "login")},
 		{name: "cancel-auth", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodDelete, "login")},
-		{name: "forget-auth", flags: []flagSpec{authProviderFlag}, validate: validateAuthProvider, run: engineAuthAction(http.MethodDelete, "auth")},
 	}
 }
 
@@ -155,7 +153,7 @@ func submitClaudeCode(v flagValues) error {
 func engineAuthAction(method, suffix string) func(flagValues) error {
 	return func(v flagValues) error {
 		if suffix == "login" && v["provider"] == "openrouter" {
-			return failf("OpenRouter uses a saved API key; use auth-status or forget-auth")
+			return failf("OpenRouter uses a saved API key and has no browser login to cancel")
 		}
 		// Saved Codex credentials are independent of the currently selected mode.
 		if method == http.MethodGet && suffix == "auth" && v["provider"] == "codex" {

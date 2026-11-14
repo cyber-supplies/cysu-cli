@@ -106,9 +106,7 @@ Engine:
   cysu engine auth --provider openrouter --model <provider/model> [--stdin]
   cysu engine auth-code --id <claude-login-id> [--stdin]
   cysu engine auth-status [--provider codex|claude|openrouter]
-  cysu engine login-status [--provider codex|claude]
   cysu engine cancel-auth [--provider codex|claude]
-  cysu engine forget-auth [--provider codex|claude|openrouter]
   cysu engine status
 
   cysu engine list-workflows

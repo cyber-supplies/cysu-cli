@@ -97,7 +97,7 @@ func TestEngineAuthCommandsReachMainDispatch(t *testing.T) {
 			t.Errorf("pre-existing command %s was removed", name)
 		}
 	}
-	for _, name := range []string{"set-passphrase", "settings", "set-settings", "list-secrets", "set-secret", "delete-secret", "daybreak-status", "check-daybreak", "plan", "set-provider", "run-status", "rerun", "delete-run", "download-run", "get-log", "watch", "list-schedules", "get-schedule", "update-schedule", "pause-schedule", "resume-schedule"} {
+	for _, name := range []string{"login-status", "forget-auth", "set-passphrase", "settings", "set-settings", "list-secrets", "set-secret", "delete-secret", "daybreak-status", "check-daybreak", "plan", "set-provider", "run-status", "rerun", "delete-run", "download-run", "get-log", "watch", "list-schedules", "get-schedule", "update-schedule", "pause-schedule", "resume-schedule"} {
 		if _, ok := r.lookup(name); ok {
 			t.Errorf("removed command %s remains registered", name)
 		}
@@ -228,9 +228,9 @@ func TestEngineOpenRouterModelUpdateAndAuthActions(t *testing.T) {
 	captureStdout(t, func() error { return authEngine(v) })
 	for _, provider := range []string{"codex", "claude", "openrouter"} {
 		v["provider"] = provider
-		for _, name := range []string{"auth-status", "forget-auth", "login-status", "cancel-auth"} {
+		for _, name := range []string{"auth-status", "cancel-auth"} {
 			cmd, _ := engineResource.lookup(name)
-			if provider == "openrouter" && (name == "login-status" || name == "cancel-auth") {
+			if provider == "openrouter" && name == "cancel-auth" {
 				if cmd.run(v) == nil {
 					t.Error("accepted browser flow for OpenRouter")
 				}
