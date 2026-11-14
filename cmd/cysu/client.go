@@ -210,7 +210,16 @@ func transportError(err error) error {
 // transferClient moves file contents to and from the presigned storage URLs
 // the backend hands out. Those can take much longer than an API call, so it
 // has its own, generous timeout.
-var transferClient = &http.Client{Timeout: 10 * time.Minute}
+// Its transport keeps as many idle connections per host as a JavaScript
+// download runs at once, so those reuse their connections to storage.
+var transferClient = &http.Client{Timeout: 10 * time.Minute, Transport: transferTransport()}
+
+// transferTransport is the default transport, keeping more idle connections.
+func transferTransport() http.RoundTripper {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = exportDownloadConcurrency
+	return transport
+}
 
 // transfer performs a request against a presigned URL. The API token is
 // deliberately not sent: the URL is the credential, and the host is not the

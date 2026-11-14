@@ -11,8 +11,10 @@ package main
 //
 //	add       POST /javascript        {url}      -> queued, nothing returned
 //	list      POST /javascript/list   {domain} or {} -> [{path, updatedAt, status}]
-//	download  POST /javascript/export {domain}   -> {url, expiresAt}
-//	          then GET url, a ZIP of the collection
+//	download  POST /javascript/export/files {domain} -> {exportId, pages}
+//	          then each page and its files (javascript_export.go); a service
+//	          without it gets POST /javascript/export {domain} -> {url},
+//	          a ZIP of the collection
 //
 // clear removes downloaded collections from $HOME/cysu/js locally.
 //
@@ -132,15 +134,12 @@ func listJavascript(domain string) error {
 	return nil
 }
 
-// downloadJavascript asks the backend for a link to the domain's collection,
-// fetches the archive and unpacks it under the user's home directory. The
-// archive is held in memory, so large exports can use substantial RAM.
-func downloadJavascript(domain string) error {
-	base, root, err := collectionPaths(domain)
-	if err != nil {
-		return err
-	}
-
+// downloadJavascriptArchive asks the backend for a link to the domain's
+// collection as one ZIP, fetches the archive and unpacks it under the user's
+// home directory. It is the fallback for a service without the paged export
+// (see javascript_export.go). The archive is held in memory, so large exports
+// can use substantial RAM.
+func downloadJavascriptArchive(domain, base, root string) error {
 	// The service builds and uploads the archive before returning its link.
 	raw, err := sendWithTimeout("POST", apiPath("javascript", "export"), map[string]any{"domain": domain}, 2*time.Minute)
 	if err != nil {
