@@ -3,6 +3,7 @@
 # No id means create; downloaded or created workflows include an id for updates.
 name: example-workflow
 request:
+  # provider: claude # codex, claude, or openrouter; omit for Codex → Claude → OpenRouter.
   globalProfile: "" # Optional profile installed for every stage.
   model: "" # Empty uses the default model.
   reasoningEffort: medium

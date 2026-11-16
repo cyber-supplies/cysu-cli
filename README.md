@@ -102,7 +102,11 @@ Profiles:
   cysu profiles save [--profile <profile>] [--all]
 
 Engine:
-  cysu engine auth             --passphrase <passphrase>
+  cysu engine auth [--provider codex|claude] [--passphrase <passphrase>]
+  cysu engine auth --provider openrouter --model <provider/model> [--stdin]
+  cysu engine auth-code --id <claude-login-id> [--stdin]
+  cysu engine auth-status [--provider codex|claude|openrouter]
+  cysu engine cancel-auth [--provider codex|claude]
   cysu engine status
 
   cysu engine list-workflows
@@ -135,6 +139,8 @@ Key:
   cysu key path
   cysu key verify
 ```
+
+See [Engine authentication](docs/engine-v3.md) for provider login and workflow provider selection.
 
 ## Authentication
 
