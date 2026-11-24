@@ -26,13 +26,13 @@ const (
 	skillProviderAgents = "AGENTS"
 )
 
-// providerFlag selects where CYSU skills are installed. An explicit
-// flag takes precedence; the fallback reads CYSU_PROVIDER.
+// providerFlag selects where CYSU skills are installed. An explicit flag
+// takes precedence over saved setup and CYSU_PROVIDER.
 var providerFlag = flagSpec{
 	name:        "provider",
 	placeholder: "provider",
-	usage:       "provider: AGENTS, CLAUDE, or CODEX (overrides CYSU_PROVIDER)",
-	fallback:    providerFromEnvironment,
+	usage:       "provider: AGENTS, CLAUDE, or CODEX (overrides saved setup and CYSU_PROVIDER)",
+	fallback:    providerFromConfig,
 }
 
 // storedSkill is one entry returned by GET /skills.
@@ -60,12 +60,19 @@ type preparedSkill struct {
 	data []byte
 }
 
-// providerFromEnvironment supplies --provider from CYSU_PROVIDER.
-func providerFromEnvironment() (string, error) {
-	provider := strings.TrimSpace(os.Getenv("CYSU_PROVIDER"))
+// providerFromConfig supplies --provider from saved setup or CYSU_PROVIDER.
+func providerFromConfig() (string, error) {
+	cfg, err := readConfig()
+	if err != nil {
+		return "", err
+	}
+	provider := strings.TrimSpace(cfg.Provider)
+	if provider == "" {
+		provider = strings.TrimSpace(os.Getenv("CYSU_PROVIDER"))
+	}
 	if provider == "" {
 		return "", cliError{
-			message: "missing provider: set CYSU_PROVIDER to AGENTS, CLAUDE, or CODEX, or pass --provider <provider>",
+			message: "missing provider: run cysu setup, set CYSU_PROVIDER, or pass --provider <provider> (AGENTS, CLAUDE, or CODEX)",
 			exit:    exitUsage,
 		}
 	}

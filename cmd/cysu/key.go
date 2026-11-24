@@ -1,100 +1,72 @@
 package main
 
-// key.go is the `cysu key` command: managing the encryption key file
-// described in encryption.go.
+// key.go restores local key initialization. The derived key is saved in the
+// private config file and mirrored to master.key for existing worker images.
 
 import (
-	"bytes"
-	"errors"
+	"bufio"
 	"fmt"
 	"os"
-	"time"
+	"strings"
+
+	"golang.org/x/term"
 )
 
 var keyResource = resource{
-	name:  "key",
-	title: "Key (encryption)",
-	commands: []command{
-		{
-			name: "init",
-			flags: []flagSpec{
-				{name: "force", boolean: true, usage: "replace an existing key (the old key is kept as a .bak file)"},
-			},
-			run: func(v flagValues) error {
-				return initKey(v.enabled("force"))
-			},
-		},
-		{
-			name: "path",
-			run: func(flagValues) error {
-				return printKeyPath()
-			},
-		},
-		{
-			name: "verify",
-			run: func(flagValues) error {
-				return verifyKey()
-			},
-		},
-	},
+	name: "key", title: "Key (encryption)",
+	commands: []command{{
+		name: "init",
+		flags: []flagSpec{{
+			name: "passphrase", placeholder: "passphrase",
+			usage: "passphrase to derive and save the key (overrides saved setup and CYSU_PASSPHRASE)",
+		}},
+		run: initKey,
+	}},
 }
 
-// initKey creates the key file. With force, an existing key is moved aside
-// to a timestamped .bak file first.
-func initKey(force bool) error {
-	path, err := keyPath()
+// initKey derives a master key, saves it in config, and writes the legacy
+// file expected by published worker images. A new passphrase replaces the key.
+func initKey(v flagValues) error {
+	cfg, err := readConfig()
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(path); err == nil {
-		if !force {
-			return failf("key file %s already exists; re-run with --force to replace it (data encrypted with the old key can then no longer be decrypted)", path)
+	passphrase := cfg.Passphrase
+	if v.provided("passphrase") {
+		passphrase = v["passphrase"]
+	} else if passphrase == "" {
+		passphrase = os.Getenv("CYSU_PASSPHRASE")
+	}
+	if passphrase == "" && !v.provided("passphrase") {
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return cliError{message: "missing passphrase: run cysu setup, pass --passphrase, or set CYSU_PASSPHRASE", exit: exitUsage}
 		}
-		bak := fmt.Sprintf("%s.bak-%s", path, time.Now().UTC().Format("20060102T150405Z"))
-		if err := os.Rename(path, bak); err != nil {
-			return fmt.Errorf("backing up existing key: %w", err)
+		fmt.Fprint(os.Stderr, "Encryption passphrase: ")
+		raw, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("reading passphrase: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "Existing key moved to %s. Data encrypted with it needs that file to decrypt.\n", bak)
+		passphrase = strings.TrimRight(raw, "\r\n")
 	}
-	kf, err := createKeyFile(path)
+	if passphrase == "" {
+		return cliError{message: "passphrase must not be empty", exit: exitUsage}
+	}
+	pass := []byte(passphrase)
+	key := deriveMasterKey(pass)
+	zero(pass)
+	cfg.Passphrase = passphrase
+	cfg.MasterKey = key
+	path, err := writeConfig(cfg)
 	if err != nil {
+		zero(key)
 		return err
 	}
-	cachedKey = kf.Key
-	return nil
-}
-
-func printKeyPath() error {
-	path, err := keyPath()
-	if err != nil {
+	if err := writeLegacyKeyFile(key); err != nil {
+		zero(key)
 		return err
 	}
+	zero(cachedKey)
+	cachedKey = key
 	fmt.Println(path)
-	return nil
-}
-
-// verifyKey prompts for the passphrase and checks it against the stored key
-// by re-running the KDF with the stored salt and parameters.
-func verifyKey() error {
-	path, err := keyPath()
-	if err != nil {
-		return err
-	}
-	kf, err := readKeyFile(path)
-	if err != nil {
-		return err
-	}
-	pass, err := promptPassphrase()
-	if err != nil {
-		return err
-	}
-	defer zero(pass)
-
-	derived := deriveKey(pass, kf.Salt, kf.Time, kf.Memory, kf.Threads)
-	defer zero(derived)
-	if !bytes.Equal(derived, kf.Key) {
-		return errors.New("passphrase does not match the stored key")
-	}
-	fmt.Println("OK: passphrase matches", path)
 	return nil
 }

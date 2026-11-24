@@ -20,6 +20,8 @@ import (
 
 // resources lists every command group, in the order they appear in the help.
 var resources = []resource{
+	setupResource,
+	keyResource,
 	engineResource,
 	javascriptResource,
 	endpointsResource,
@@ -29,7 +31,6 @@ var resources = []resource{
 	profileResource,
 	proxyResource,
 	emailResource,
-	keyResource,
 	debugResource,
 }
 
@@ -77,11 +78,13 @@ func findResource(name string) (resource, bool) {
 
 // rootUsageLine renders the top-level invocation with every resource.
 func rootUsageLine() string {
-	names := make([]string, len(resources))
-	for i, r := range resources {
-		names[i] = r.name
+	names := make([]string, 0, len(resources)-1)
+	for _, r := range resources {
+		if !r.standalone {
+			names = append(names, r.name)
+		}
 	}
-	return "cysu {" + strings.Join(names, "|") + "} <action> [flags]"
+	return "cysu setup [flags] | cysu {" + strings.Join(names, "|") + "} <action> [flags]"
 }
 
 // exitOnError reports err as one {"error": ...} line on stderr (see
@@ -101,7 +104,7 @@ func exitOnError(err error) {
 func printUsage() {
 	w := os.Stderr
 
-	fmt.Fprintf(w, "cysu %s - CyberSupplies CLI\n\nUsage:\n  cysu <resource> <action> [flags]\n\n", version)
+	fmt.Fprintf(w, "cysu %s - CyberSupplies CLI\n\nUsage:\n  cysu setup [flags]\n  cysu <resource> <action> [flags]\n\n", version)
 
 	for _, r := range resources {
 		r.printHelp(w)

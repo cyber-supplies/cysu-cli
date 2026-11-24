@@ -4,30 +4,22 @@ package main
 //
 // Design:
 //
-//   - On first run the user is prompted for a passphrase. The passphrase is
+//   - The passphrase saved by setup, or CYSU_PASSPHRASE when absent, is
 //     stretched with Argon2id (64 MiB, 3 passes, 4 lanes) and a fixed,
-//     CYSU-specific domain salt into a 256-bit master key. This intentionally
-//     makes the same passphrase reproduce the same key on every machine.
-//   - The derived key, salt and KDF parameters are written to a key file with
-//     mode 0600 inside a 0700 directory in the user's config directory
-//     (Linux: $XDG_CONFIG_HOME/cysu/master.key, default ~/.config/cysu/;
-//     macOS: ~/Library/Application Support/cysu/; Windows: %AppData%\cysu\).
-//     CYSU_KEY_FILE overrides the location.
+//     CYSU-specific domain salt into a 256-bit master key in memory. The
+//     same passphrase reproduces the same key on every machine.
 //   - encrypt/decrypt use AES-256-GCM with a fresh random 96-bit nonce per
 //     message. Wire format: [version:1][nonce:12][ciphertext||tag:16].
 //     The version byte is bound as additional authenticated data.
 //
-// Anyone without the passphrase (or read access to the key file) cannot
-// decrypt. Protecting the key file is therefore the same job as protecting
-// ~/.ssh/id_ed25519: the CLI refuses to use a key file that is readable by
-// group or others.
+// Anyone without the passphrase cannot decrypt. Setup stores it in the
+// private config file; changing it changes the key used for future data.
 //
 // The contents of stored files are zstd-compressed and encrypted before upload
 // (storage.go). The storage service only sees ciphertext; paths remain in the
 // clear so it can list files.
 //
-// This file holds the cipher itself. keyfile.go derives, stores and loads the
-// master key; key.go is the `cysu key` command that manages it.
+// This file holds the cipher itself; passphrase.go derives its key.
 
 import (
 	"crypto/aes"
@@ -56,8 +48,7 @@ const (
 var errNotCiphertext = errors.New("not ciphertext")
 
 // encrypt seals plaintext with the master key and returns a self-describing
-// binary blob suitable for decrypt. It triggers first-run key setup if no key
-// file exists yet.
+// binary blob suitable for decrypt.
 func encrypt(plaintext []byte) ([]byte, error) {
 	key, err := masterKey()
 	if err != nil {

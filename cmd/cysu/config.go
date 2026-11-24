@@ -1,8 +1,7 @@
 package main
 
-// config.go holds local CLI settings. The file lives next to the master key
-// (see keyfile.go) and is written atomically so a crash cannot leave it
-// half-written.
+// config.go holds local CLI settings. The file is written atomically so a
+// crash cannot leave it half-written.
 
 import (
 	"encoding/json"
@@ -10,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 const configFileName = "config.json"
@@ -17,12 +17,17 @@ const configFileName = "config.json"
 // config is the on-disk shape of the settings file.
 type config struct {
 	// ProxyInstalled records that `cysu proxy install` completed successfully.
-	// It contains no proxy credentials or other sensitive configuration.
-	ProxyInstalled bool `json:"proxyInstalled,omitempty"`
+	// The other fields can contain credentials, so writes use mode 0600.
+	ProxyInstalled bool   `json:"proxyInstalled,omitempty"`
+	Token          string `json:"token,omitempty"`
+	Passphrase     string `json:"passphrase,omitempty"`
+	MasterKey      []byte `json:"masterKey,omitempty"` // JSON encodes the 32-byte key as base64.
+	EngineURL      string `json:"engineUrl,omitempty"`
+	Provider       string `json:"provider,omitempty"`
 }
 
-// configPath returns the location of the settings file: config.json in the
-// same directory as the key file.
+// configPath returns the location of the settings file in the user's config
+// directory.
 func configPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -52,7 +57,7 @@ func readConfig() (config, error) {
 }
 
 // writeConfig atomically replaces the settings file with cfg, creating the
-// parent directory (mode 0700, shared with the key file) if needed.
+// parent directory with mode 0700 if needed.
 func writeConfig(cfg config) (string, error) {
 	path, err := configPath()
 	if err != nil {
@@ -62,6 +67,11 @@ func writeConfig(cfg config) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("creating config dir %s: %w", dir, err)
 	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return "", fmt.Errorf("securing config dir %s: %w", dir, err)
+		}
+	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -69,12 +79,23 @@ func writeConfig(cfg config) (string, error) {
 	}
 	data = append(data, '\n')
 
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, ".config-*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("creating config file: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
 		return "", fmt.Errorf("writing config file: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("syncing config file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("closing config file: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
 		return "", fmt.Errorf("installing config file: %w", err)
 	}
 	return path, nil

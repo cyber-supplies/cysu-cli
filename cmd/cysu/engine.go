@@ -17,12 +17,12 @@ import (
 // enginePreflight checks authentication; provisioning belongs to the installer.
 // Only starting a run requires ready credentials; passphrases are not synchronized here.
 func enginePreflight(v flagValues, requireAuth bool) error {
-	token := strings.TrimSpace(v["token"])
-	if token == "" {
-		token = strings.TrimSpace(os.Getenv("CYSU_TOKEN"))
+	token, err := configuredToken(v)
+	if err != nil {
+		return err
 	}
 	if token == "" {
-		return cliError{message: "engine commands require a Cyber Supplies user token: set CYSU_TOKEN or pass --token <token>", exit: exitUsage}
+		return cliError{message: "engine commands require a Cyber Supplies user token: run cysu setup, set CYSU_TOKEN, or pass --token <token>", exit: exitUsage}
 	}
 	if !strings.HasPrefix(token, "usr_") {
 		return cliError{message: "engine commands require a Cyber Supplies user token starting with usr_; LLM tokens cannot access engine commands", exit: exitUsage}
@@ -132,7 +132,7 @@ func deleteWorkflow(v flagValues) error {
 }
 
 // engineResource exposes saved engine workspaces as workflows in the CLI.
-// Preflight verifies the token; commands need no local master key.
+// Preflight verifies the token; commands need no local encryption passphrase.
 var engineResource = resource{
 	name: "engine", title: "Engine",
 	commands: append([]command{
@@ -306,13 +306,20 @@ func engineSendWithStatus(v flagValues, method, path string, body any) ([]byte, 
 	return raw, resp.StatusCode, nil
 }
 
-// engineFlag supplies the engine address for each engine command. There is
-// deliberately no default: callers must choose an engine explicitly.
+// engineFlag supplies the engine address from an explicit flag, saved setup,
+// or CYSU_ENGINE_URL when no address was saved.
 var engineFlag = flagSpec{
 	name: "engine", placeholder: "url",
-	usage: "Engine URL (overrides CYSU_ENGINE_URL; one is required)",
+	usage: "Engine URL (overrides saved setup and CYSU_ENGINE_URL)",
 	fallback: func() (string, error) {
-		return os.Getenv("CYSU_ENGINE_URL"), nil
+		cfg, err := readConfig()
+		if err != nil {
+			return "", err
+		}
+		if value := strings.TrimSpace(cfg.EngineURL); value != "" {
+			return value, nil
+		}
+		return strings.TrimSpace(os.Getenv("CYSU_ENGINE_URL")), nil
 	},
 }
 
@@ -321,7 +328,7 @@ var engineFlag = flagSpec{
 func validateEngineURL(v flagValues) error {
 	base := strings.TrimSpace(v["engine"])
 	if base == "" {
-		return cliError{message: "missing engine URL: set CYSU_ENGINE_URL or pass --engine <url>", exit: exitUsage}
+		return cliError{message: "missing engine URL: run cysu setup, set CYSU_ENGINE_URL, or pass --engine <url>", exit: exitUsage}
 	}
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.Opaque != "" {

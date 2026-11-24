@@ -80,11 +80,12 @@ type command struct {
 
 // A resource groups the commands that act on one kind of object.
 type resource struct {
-	name     string
-	title    string // section heading in the help text
-	api      bool   // talks to the backend: needs an API token
-	keyless  bool   // API handles encryption; no local master key is needed
-	commands []command
+	name       string
+	title      string // section heading in the help text
+	api        bool   // talks to the backend: needs an API token
+	keyless    bool   // API handles encryption; no local master key is needed
+	standalone bool   // invoked without an action, e.g. `cysu setup [flags]`
+	commands   []command
 }
 
 // usesAPI reports whether c talks to the backend when run within r.
@@ -111,6 +112,16 @@ func (r resource) flags(c command) []flagSpec {
 // run dispatches args (an action name followed by its flags) to the matching
 // command.
 func (r resource) run(args []string) error {
+	if r.standalone {
+		values, err := r.commands[0].parse(r, args)
+		if err != nil {
+			return err
+		}
+		if values.enabled("debug") {
+			setTracing(true)
+		}
+		return r.commands[0].run(values)
+	}
 	if len(args) == 0 {
 		return usageErrorf(r.usageLine(), "%s: missing action", r.name)
 	}
@@ -138,15 +149,15 @@ func (r resource) run(args []string) error {
 		}
 	}
 
-	// API commands resolve their token and, when needed, the master key before
-	// they touch the network. Both run after parsing so usage errors never
-	// trigger a key prompt.
+	// API commands resolve their token and, when needed, the encryption
+	// key before they touch the network. Both run after parsing so
+	// usage errors never trigger encryption setup.
 	if r.usesAPI(cmd) {
 		if err := loadAPIToken(values); err != nil {
 			return err
 		}
 		if !r.keyless {
-			if err := ensureKey(); err != nil {
+			if err := ensureEncryptionKey(); err != nil {
 				return err
 			}
 		}
@@ -166,6 +177,9 @@ func (r resource) lookup(name string) (command, bool) {
 // usageLine renders the resource's invocation with every action it offers,
 // e.g. "cysu storage {list|upload|download|read} [flags]".
 func (r resource) usageLine() string {
+	if r.standalone {
+		return r.commands[0].usageLine(r)
+	}
 	names := make([]string, len(r.commands))
 	for i, c := range r.commands {
 		names[i] = c.name
@@ -176,6 +190,9 @@ func (r resource) usageLine() string {
 // usageLine renders the command's full invocation within r, e.g.
 // "cysu storage list [--dir <dir>] [--token <token>]".
 func (c command) usageLine(r resource) string {
+	if r.standalone {
+		return strings.TrimRight("cysu "+r.name+" "+flagSynopsis(r.flags(c)), " ")
+	}
 	return strings.TrimRight("cysu "+r.name+" "+c.name+" "+flagSynopsis(r.flags(c)), " ")
 }
 
@@ -183,6 +200,9 @@ func (c command) usageLine(r resource) string {
 // the command's help and returns flag.ErrHelp.
 func (c command) parse(r resource, args []string) (flagValues, error) {
 	qualified := r.name + " " + c.name
+	if r.standalone {
+		qualified = r.name
+	}
 	flags := r.flags(c)
 	usage := c.usageLine(r)
 
@@ -351,6 +371,11 @@ func (c command) printHelp(w io.Writer, r resource) {
 // flags such as --token are left out; they are documented once in main.
 func (r resource) printHelp(w io.Writer) {
 	fmt.Fprintf(w, "%s:\n", r.title)
+	if r.standalone {
+		fmt.Fprintln(w, "  "+r.commands[0].usageLine(r))
+		fmt.Fprintln(w)
+		return
+	}
 
 	rows := make([][]string, len(r.commands))
 

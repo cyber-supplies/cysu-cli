@@ -4,14 +4,12 @@ package main
 // setup when something is not working.
 //
 // `debug info` is offline and answers "what is this binary configured to
-// do": version, platform, gateway URL, whether a token is present, where the
-// key and config files are and whether they are usable. `debug check` adds a
+// do": version, platform, gateway URL, whether a token and passphrase are
+// present, and whether the config is readable. `debug check` adds a
 // request to the gateway, so it also answers "does any of it work".
 //
-// Both are built to run when nothing else does. Neither needs a token or a
-// key, and neither creates one: the key file is inspected directly rather
-// than through masterKey, which would prompt for a passphrase and write a new
-// key. A diagnostic has to describe what is there, not change it.
+// Both are built to run when nothing else does. Neither needs a token or
+// passphrase, and neither derives a key. A diagnostic must not change setup.
 //
 // A run that finds problems is still a successful run. It reports them under
 // "problems" with "ok": false and exits 0. The "error" key is kept for the
@@ -21,7 +19,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"runtime"
 	"strings"
@@ -55,16 +52,16 @@ var debugResource = resource{
 
 // A debugReport is what `cysu debug` prints.
 type debugReport struct {
-	OK       bool           `json:"ok"`
-	Version  string         `json:"version"`
-	Platform string         `json:"platform"`
-	Go       string         `json:"go"`
-	APIURL   string         `json:"api_url"`
-	Token    tokenStatus    `json:"token"`
-	Key      keyStatus      `json:"key"`
-	Config   configStatus   `json:"config"`
-	Gateway  *gatewayStatus `json:"gateway,omitempty"`
-	Problems []string       `json:"problems"`
+	OK         bool             `json:"ok"`
+	Version    string           `json:"version"`
+	Platform   string           `json:"platform"`
+	Go         string           `json:"go"`
+	APIURL     string           `json:"api_url"`
+	Token      tokenStatus      `json:"token"`
+	Passphrase passphraseStatus `json:"passphrase"`
+	Config     configStatus     `json:"config"`
+	Gateway    *gatewayStatus   `json:"gateway,omitempty"`
+	Problems   []string         `json:"problems"`
 }
 
 // A tokenStatus says whether a token was found and where, never what it is.
@@ -74,13 +71,10 @@ type tokenStatus struct {
 	Hint    string `json:"hint,omitempty"`
 }
 
-// A keyStatus describes the encryption key file.
-type keyStatus struct {
-	Path        string `json:"path"`
-	Exists      bool   `json:"exists"`
-	Permissions string `json:"permissions,omitempty"`
-	OK          bool   `json:"ok"`
-	Detail      string `json:"detail,omitempty"`
+// passphraseStatus reports presence without exposing the passphrase.
+type passphraseStatus struct {
+	Present bool   `json:"present"`
+	Source  string `json:"source,omitempty"`
 }
 
 // A configStatus describes the settings file.
@@ -104,22 +98,22 @@ type gatewayStatus struct {
 // worth reporting.
 func buildReport(v flagValues, probe bool) debugReport {
 	report := debugReport{
-		Version:  version,
-		Platform: runtime.GOOS + "/" + runtime.GOARCH,
-		Go:       runtime.Version(),
-		APIURL:   resolveBaseURL(),
-		Token:    inspectToken(v),
-		Key:      inspectKey(),
-		Config:   inspectConfig(),
-		Problems: []string{}, // never null in the output
+		Version:    version,
+		Platform:   runtime.GOOS + "/" + runtime.GOARCH,
+		Go:         runtime.Version(),
+		APIURL:     resolveBaseURL(),
+		Token:      inspectToken(v),
+		Passphrase: inspectPassphrase(),
+		Config:     inspectConfig(),
+		Problems:   []string{}, // never null in the output
 	}
 
 	if !report.Token.Present {
 		report.Problems = append(report.Problems,
-			"no API token: set CYSU_TOKEN or pass --token <token>")
+			"no API token: run cysu setup, set CYSU_TOKEN, or pass --token <token>")
 	}
-	if !report.Key.OK {
-		report.Problems = append(report.Problems, "encryption key unusable: "+report.Key.Detail)
+	if !report.Passphrase.Present {
+		report.Problems = append(report.Problems, "no encryption passphrase: run cysu setup or set CYSU_PASSPHRASE")
 	}
 	if report.Config.Detail != "" {
 		report.Problems = append(report.Problems, "config unreadable: "+report.Config.Detail)
@@ -153,45 +147,32 @@ func inspectToken(v flagValues) tokenStatus {
 	if token := strings.TrimSpace(v["token"]); token != "" {
 		return tokenStatus{Present: true, Source: "--token", Hint: redactTail(token)}
 	}
+	cfg, err := readConfig()
+	if err != nil {
+		return tokenStatus{}
+	}
+	if strings.TrimSpace(cfg.Token) != "" {
+		return tokenStatus{Present: true, Source: "setup", Hint: redactTail(cfg.Token)}
+	}
 	if token := strings.TrimSpace(os.Getenv("CYSU_TOKEN")); token != "" {
 		return tokenStatus{Present: true, Source: "CYSU_TOKEN", Hint: redactTail(token)}
 	}
 	return tokenStatus{}
 }
 
-// inspectKey describes the key file without creating or opening one. The
-// permissions are reported where they mean something, since readKeyFile
-// refuses a key that others can read.
-func inspectKey() keyStatus {
-	path, err := keyPath()
+// inspectPassphrase follows the same saved-config-first precedence as masterKey.
+func inspectPassphrase() passphraseStatus {
+	cfg, err := readConfig()
 	if err != nil {
-		return keyStatus{Detail: err.Error()}
+		return passphraseStatus{}
 	}
-	status := keyStatus{Path: path}
-
-	info, err := os.Stat(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		status.Detail = "no key file; run `cysu key init`"
-		return status
-	case err != nil:
-		status.Detail = err.Error()
-		return status
+	if cfg.Passphrase != "" {
+		return passphraseStatus{Present: true, Source: "setup"}
 	}
-	status.Exists = true
-
-	if runtime.GOOS != "windows" {
-		status.Permissions = fmt.Sprintf("%04o", info.Mode().Perm())
+	if os.Getenv("CYSU_PASSPHRASE") != "" {
+		return passphraseStatus{Present: true, Source: "CYSU_PASSPHRASE"}
 	}
-
-	// readKeyFile applies the same checks every other command relies on, so a
-	// key it rejects is one that would break them.
-	if _, err := readKeyFile(path); err != nil {
-		status.Detail = err.Error()
-		return status
-	}
-	status.OK = true
-	return status
+	return passphraseStatus{}
 }
 
 // inspectConfig describes the settings file.

@@ -35,9 +35,8 @@ func TestEmailSendLoadsAccountAndDeliversFromClient(t *testing.T) {
 	}))
 	defer server.Close()
 	t.Setenv("CYSU_API_URL", server.URL)
-	t.Setenv("CYSU_TOKEN", "user-token")
 	output := captureStdout(t, func() error {
-		return emailResource.run([]string{"send", "--account", "work", "--recipient", "you@example.com", "--subject", "Hi", "--body", "Hello"})
+		return emailResource.run([]string{"send", "--token", "user-token", "--account", "work", "--recipient", "you@example.com", "--subject", "Hi", "--body", "Hello"})
 	})
 	var result map[string]any
 	if err := json.Unmarshal(output, &result); err != nil {

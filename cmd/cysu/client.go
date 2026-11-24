@@ -29,24 +29,37 @@ var httpClient = &http.Client{Timeout: 30 * time.Second}
 // Authentication
 // ---------------------------------------------------------------------------
 
-// tokenFlag lets a single invocation pass its API token on the command line
-// instead of through CYSU_TOKEN. Every API command accepts it.
-var tokenFlag = flagSpec{name: "token", placeholder: "token", usage: "API token (overrides CYSU_TOKEN)"}
+// tokenFlag lets a single invocation override the saved setup token.
+var tokenFlag = flagSpec{name: "token", placeholder: "token", usage: "API token (overrides saved setup and CYSU_TOKEN)"}
 
 // apiToken authenticates every request of this invocation. loadAPIToken
 // resolves it once before an API command runs.
 var apiToken string
 
-// loadAPIToken picks the token for this invocation: --token when given,
-// otherwise CYSU_TOKEN. Having neither is a usage error, reported before any
-// request is made.
-func loadAPIToken(v flagValues) error {
+// configuredToken picks an explicit token, then saved setup, then the environment.
+func configuredToken(v flagValues) (string, error) {
 	token := strings.TrimSpace(v["token"])
+	if token == "" {
+		cfg, err := readConfig()
+		if err != nil {
+			return "", err
+		}
+		token = strings.TrimSpace(cfg.Token)
+	}
 	if token == "" {
 		token = strings.TrimSpace(os.Getenv("CYSU_TOKEN"))
 	}
+	return token, nil
+}
+
+// loadAPIToken resolves a token before a gateway request.
+func loadAPIToken(v flagValues) error {
+	token, err := configuredToken(v)
+	if err != nil {
+		return err
+	}
 	if token == "" {
-		return cliError{message: "missing API token: set CYSU_TOKEN or pass --token <token>", exit: exitUsage}
+		return cliError{message: "missing API token: run cysu setup, set CYSU_TOKEN, or pass --token <token>", exit: exitUsage}
 	}
 	apiToken = token
 	return nil

@@ -123,9 +123,8 @@ next_steps() {
 	printf '%s\n' \
 		"" \
 		"Done. Before an agent can use cysu:" \
-		"  1. export CYSU_TOKEN=<your API token>" \
-		"  2. cysu key init        (creates the encryption key; asks for a passphrase)" \
-		"  3. cysu debug check     (checks the token and gateway)" >&2
+		"  1. cysu setup           (saves your key and passphrase; optional settings can be skipped)" \
+		"  2. cysu debug check     (checks the token and gateway)" >&2
 }
 
 # cleanup removes the temporary checkout, if one was made.

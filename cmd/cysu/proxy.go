@@ -8,8 +8,8 @@ package main
 //
 //  1. It fetches the proxy's CA certificate and installs it into the OS trust
 //     store, so the TLS the proxy re-signs on the fly is trusted by clients.
-//  2. It writes the proxy into /etc/environment, with the CYSU_TOKEN as the
-//     proxy password, so ordinary tools (curl, package managers, ...) send
+//  2. It writes the proxy into /etc/environment, with the saved setup token
+//     or CYSU_TOKEN fallback as the proxy password, so ordinary tools send
 //     their traffic through it and authenticate automatically.
 //
 // This is Linux-only for now; other platforms report an error rather than
@@ -57,7 +57,7 @@ var proxyResource = resource{
 	name:  "proxy",
 	title: "Proxy",
 	// Not an API resource: it talks to the proxy host, not the backend, and
-	// handles CYSU_TOKEN itself (as the proxy password, not a Bearer token).
+	// uses the saved token or CYSU_TOKEN as the proxy password, not a Bearer token.
 	commands: []command{
 		{
 			name: "install",
@@ -82,12 +82,19 @@ func installProxy() error {
 		return failf("cysu proxy install is only supported on Linux (this is %s)", runtime.GOOS)
 	}
 	if os.Geteuid() != 0 {
-		return failf("cysu proxy install must run as root: re-run with `sudo -E cysu proxy install` (so CYSU_TOKEN is preserved)")
+		return failf("cysu proxy install must run as root: re-run with `sudo -E cysu proxy install` (so the config location or CYSU_TOKEN is preserved)")
 	}
 
-	token := strings.TrimSpace(os.Getenv("CYSU_TOKEN"))
+	cfg, err := readConfig()
+	if err != nil {
+		return err
+	}
+	token := strings.TrimSpace(cfg.Token)
 	if token == "" {
-		return failf("missing CYSU_TOKEN: set it before running (with sudo, use `sudo -E` or `sudo CYSU_TOKEN=... cysu proxy install`)")
+		token = strings.TrimSpace(os.Getenv("CYSU_TOKEN"))
+	}
+	if token == "" {
+		return failf("missing token: run cysu setup or set CYSU_TOKEN (with sudo, use `sudo -E`)")
 	}
 
 	host := proxyHost()

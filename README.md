@@ -18,7 +18,7 @@ git clone https://github.com/cyber-supplies/cysu-cli.git
 npx -y skills add .\cysu-cli -g
 ```
 
-Set `CYSU_TOKEN`, run `cysu key init`, then use `cysu debug check` to check the token and gateway. `cysu proxy install` is supported only on Linux.
+Run `cysu setup` to save a token and passphrase, then use `cysu debug check` to check the gateway. Passing any setup flag skips the interactive prompts. `cysu proxy install` is supported only on Linux.
 
 ## Build From Source
 
@@ -28,8 +28,6 @@ go vet ./... 2>&1 && go build -o cysu ./cmd/cysu 2>&1 && echo "BUILD OK"
 ```
 
 ## Releasing
-
-The repository secret `NPM_TOKEN` must be a granular npm token with permission to publish to the `@cyber-supplies` scope and bypass 2FA. A new version tag builds Linux, macOS, and Windows binaries for x64 and arm64, checks the generated npm packages on native runners, and publishes the platform packages before `@cyber-supplies/cysu`. npm will not overwrite an existing version.
 
 ```sh
 git checkout main && git pull
@@ -42,7 +40,9 @@ gh run watch --exit-status
 
 `CYSU_TOKEN` - Supplies the API token.
 
-`CYSU_PROVIDER` - The default provider: `AGENTS`, `CLAUDE`, or `CODEX`.
+`CYSU_PASSPHRASE` - Supplies the encryption passphrase when setup has not saved one.
+
+`CYSU_PROVIDER` - Overrides the setup provider: `AGENTS`, `CLAUDE`, or `CODEX`.
 
 ## Usage
 
@@ -50,6 +50,7 @@ gh run watch --exit-status
 cysu - CyberSupplies CLI
 
 Usage:
+  cysu setup [flags]
   cysu <resource> <action> [flags]
 
 Storage:
@@ -133,25 +134,20 @@ Accounts:
   cysu accounts create --username <user> --password <pass> --location <location>
   cysu accounts modify --account <account> [--username <user>] [--password <pass>] [--location <location>]
   cysu accounts remove --account <account>
-
-Key:
-  cysu key init [--force]
-  cysu key path
-  cysu key verify
 ```
 
 See [Engine authentication](docs/engine-v3.md) for provider login and workflow provider selection.
 
 ## Authentication
 
-The recommended way to authenticate is to set an environment variable:
+The recommended way to authenticate is to use the setup command:
 
 ```
-export CYSU_TOKEN=sk-xxxx
+cysu setup
 ```
 
 It is also possible to pass the token directly via a CLI flag:
 
 ```
-cysu debug check --token sk-xxxx
+cysu accounts list --token sk-xxxx
 ```
